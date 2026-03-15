@@ -4,27 +4,76 @@
 <meta charset="UTF-8">
 <title>Population Optimizer</title>
 <style>
-  body { font-family: monospace; padding: 20px; }
+  :root {
+    --bg: #1a1a1a;
+    --surface: #242424;
+    --surface2: #2e2e2e;
+    --border: #444;
+    --text: #e0e0e0;
+    --text-dim: #888;
+    --th-bg: #2e2e2e;
+    --computed-bg: #222;
+    --computed-fg: #999;
+    --output-bg: #1a2e1a;
+    --output-fg: #7ec87e;
+    --status-bg: #1a2e1a;
+    --status-border: #4a7a4a;
+    --status-fg: #7ec87e;
+    --error-bg: #2e1a1a;
+    --error-border: #7a4a4a;
+    --error-fg: #e08080;
+    --input-border: #555;
+    --btn-bg: #333;
+    --btn-border: #555;
+    --btn-fg: #ccc;
+  }
+  body.light {
+    --bg: #ffffff;
+    --surface: #f5f5f5;
+    --surface2: #ebebeb;
+    --border: #ccc;
+    --text: #111;
+    --text-dim: #666;
+    --th-bg: #f0f0f0;
+    --computed-bg: #f9f9f9;
+    --computed-fg: #555;
+    --output-bg: #e8f5e9;
+    --output-fg: #2a7a2a;
+    --status-bg: #e8f5e9;
+    --status-border: #aaa;
+    --status-fg: #333;
+    --error-bg: #fdecea;
+    --error-border: #aaa;
+    --error-fg: #c00;
+    --input-border: #ccc;
+    --btn-bg: #fff;
+    --btn-border: #ccc;
+    --btn-fg: #333;
+  }
+  body { font-family: monospace; padding: 20px; background: var(--bg); color: var(--text); }
   table { border-collapse: collapse; width: 100%; }
-  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
-  th { background: #f0f0f0; }
-  td.computed { background: #f9f9f9; color: #555; }
-  td.output { background: #e8f5e9; font-weight: bold; }
-  input[type=number], input[type=text] { width: 100%; box-sizing: border-box; border: none; background: transparent; font-family: monospace; }
+  th, td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
+  th { background: var(--th-bg); }
+  td.computed { background: var(--computed-bg); color: var(--computed-fg); }
+  td.output { background: var(--output-bg); color: var(--output-fg); font-weight: bold; }
+  input[type=number], input[type=text] { width: 100%; box-sizing: border-box; border: none; background: transparent; font-family: monospace; color: var(--text); }
   .config { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
-  .config label { display: block; font-size: 12px; margin-bottom: 4px; }
-  .config input { border: 1px solid #ccc; padding: 4px 6px; width: 100%; box-sizing: border-box; font-family: monospace; }
-  .status { margin: 8px 0; padding: 6px 10px; background: #e8f5e9; border: 1px solid #aaa; font-size: 13px; }
-  .status.error { background: #fdecea; }
-  button { margin-top: 10px; padding: 6px 14px; font-family: monospace; cursor: pointer; }
+  .config label { display: block; font-size: 12px; margin-bottom: 4px; color: var(--text-dim); }
+  .config input { border: 1px solid var(--input-border); padding: 4px 6px; width: 100%; box-sizing: border-box; font-family: monospace; background: var(--surface); color: var(--text); }
+  .status { margin: 8px 0; padding: 6px 10px; background: var(--status-bg); border: 1px solid var(--status-border); color: var(--status-fg); font-size: 13px; }
+  .status.error { background: var(--error-bg); border-color: var(--error-border); color: var(--error-fg); }
+  button { margin-top: 10px; padding: 6px 14px; font-family: monospace; cursor: pointer; background: var(--btn-bg); border: 1px solid var(--btn-border); color: var(--btn-fg); }
+  button:hover { opacity: 0.8; }
+  textarea { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
   .no-spin::-webkit-outer-spin-button,
   .no-spin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   .no-spin[type=number] { -moz-appearance: textfield; }
+  tr.totals-row { background: var(--th-bg); color: var(--text); font-weight: bold; }
 </style>
 </head>
 <body>
 
-<h2>Population Optimizer</h2>
+<h2>Population Optimizer <button id="themeToggle" onclick="toggleTheme()">☀ Light Mode</button></h2>
 
 <div class="config">
   <div>
@@ -49,11 +98,11 @@
     <tr>
       <th>Name</th>
       <th>Planet Capacity</th>
+      <th>Population</th>
       <th>Planetary Growth Modifier (%)</th>
       <th>Effective Growth Modifier (%)</th>
       <th>Planetary Housing Usage Modifier (%)</th>
       <th>Housing Usage per Pop</th>
-      <th>Population</th>
       <th>Current Base Growth</th>
       <th>Current Modified Growth</th>
       <th>Optimal Population</th>
@@ -140,15 +189,15 @@ function renderTable() {
       <td><input type="number" value="${row.c}" min="0" step="1" class="no-spin"
         oninput="updateRow(${row.id}, 'c', this.value)"
         onkeydown="if(event.key==='ArrowUp'){event.preventDefault();this.value=+this.value+100;updateRow(${row.id},'c',this.value)}if(event.key==='ArrowDown'){event.preventDefault();this.value=Math.max(0,+this.value-100);updateRow(${row.id},'c',this.value)}"></td>
+      <td><input type="number" value="${row.pop}" min="0" step="1" class="no-spin"
+        oninput="updateRow(${row.id}, 'pop', this.value)"
+        onkeydown="if(event.key==='ArrowUp'){event.preventDefault();this.value=+this.value+100;updateRow(${row.id},'pop',this.value)}if(event.key==='ArrowDown'){event.preventDefault();this.value=Math.max(0,+this.value-100);updateRow(${row.id},'pop',this.value)}"></td>
       <td><input type="number" value="${row.growthMod}" step="any"
         oninput="updateRow(${row.id}, 'growthMod', this.value)"> %</td>
       <td class="computed" id="effM-${row.id}">${(effectiveM(row)*100).toFixed(1)}%</td>
       <td><input type="number" value="${row.housingMod}" step="any"
         oninput="updateRow(${row.id}, 'housingMod', this.value)"> %</td>
       <td class="computed" id="effH-${row.id}">${effectiveH(row).toFixed(3)}</td>
-      <td><input type="number" value="${row.pop}" min="0" step="1" class="no-spin"
-        oninput="updateRow(${row.id}, 'pop', this.value)"
-        onkeydown="if(event.key==='ArrowUp'){event.preventDefault();this.value=+this.value+100;updateRow(${row.id},'pop',this.value)}if(event.key==='ArrowDown'){event.preventDefault();this.value=Math.max(0,+this.value-100);updateRow(${row.id},'pop',this.value)}"></td>
       <td class="computed" id="curBG-${row.id}">—</td>
       <td class="computed" id="curMG-${row.id}">—</td>
       <td class="output" id="opt-${row.id}">—</td>
@@ -161,16 +210,15 @@ function renderTable() {
   // totals row
   const tfoot = document.createElement('tr');
   tfoot.id = 'totalsRow';
-  tfoot.style.fontWeight = 'bold';
-  tfoot.style.background = '#f0f0f0';
+  tfoot.className = 'totals-row';
   tfoot.innerHTML = `
     <td>Total</td>
     <td id="tot-c">—</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
     <td id="tot-pop">—</td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td></td>
     <td id="tot-curBG">—</td>
     <td id="tot-curMG">—</td>
     <td id="tot-opt">—</td>
@@ -223,7 +271,12 @@ function optimalX(c, m, h, lambda, log=false) {
   return result;
 }
 
-const VERSION = '0.0.18';
+function toggleTheme() {
+  const isLight = document.body.classList.toggle('light');
+  document.getElementById('themeToggle').textContent = isLight ? '⏾ Dark Mode' : '☀ Light Mode';
+}
+
+const VERSION = '0.1.0';
 console.log(`Population Optimizer v${VERSION} initializing`);
 
 function doExport() {
@@ -272,17 +325,56 @@ function totalForLambda(lambda) {
 }
 
 function debugSolve() {
+  const p = parseFloat(document.getElementById('totalPop').value);
   console.log(`=== DEBUG SOLVE v${VERSION} ===`);
-  console.log(`empireGrowth=${empireGrowth()}%, empireHousing=${empireHousing()}%`);
+  console.log(`Target population: ${p}`);
+  console.log(`Empire modifiers: growth=${empireGrowth()}%, housing=${empireHousing()}%`);
+  console.log('');
+
+  // Per-planet summary
+  console.log('--- Per-planet parameters ---');
   for (const row of rows) {
     const m = effectiveM(row), h = effectiveH(row);
-    console.log(`Row "${row.name || row.id}": c=${row.c}, growthMod=${row.growthMod}%, housingMod=${row.housingMod}%, m=${m}, h=${h}`);
-    console.log(`  unconstrainedPeak = ${unconstrainedPeak(row.c, h)}`);
-    console.log(`  xForLambda(0) = ${xForLambda(row.c, m, h, 0)}`);
+    const peak = unconstrainedPeak(row.c, h);
+    console.log(`  "${row.name || 'unnamed'}": c=${row.c}, pop=${row.pop}, m=${m.toFixed(4)}, h=${h.toFixed(4)}, unconstrained_peak=${peak.toFixed(2)}, current_dGdx=${dGdx(row.pop, row.c, m, h).toFixed(6)}`);
   }
-  console.log(`totalForLambda(0) = ${totalForLambda(0)}`);
-  console.log(`totalForLambda(0.001) = ${totalForLambda(0.001)}`);
-  console.log(`totalForLambda(-0.001) = ${totalForLambda(-0.001)}`);
+  console.log(`  Sum of unconstrained peaks: ${rows.reduce((s,r) => s + unconstrainedPeak(r.c, effectiveH(r)), 0).toFixed(2)}`);
+  console.log('');
+
+  // Newton iteration trace
+  console.log('--- Newton iteration trace ---');
+  const n = rows.length;
+  const x0 = p / n;
+  let lambda = rows.reduce((sum, r) => sum + dGdx(x0, r.c, effectiveM(r), effectiveH(r)), 0) / n;
+  console.log(`  Starting lambda (avg dG/dx at equal share ${x0.toFixed(1)}): ${lambda.toFixed(6)}`);
+
+  for (let iter = 0; iter < 100; iter++) {
+    let f = -p, df = 0;
+    for (const row of rows) {
+      const x = xForLambda(row.c, effectiveM(row), effectiveH(row), lambda);
+      f += x;
+      const d2 = d2Gdx2(x, row.c, effectiveM(row), effectiveH(row));
+      if (d2 !== 0 && isFinite(d2)) df += 1 / d2;
+    }
+    console.log(`  iter ${iter}: lambda=${lambda.toFixed(6)}, f(lambda)=${f.toFixed(4)}, f'(lambda)=${df.toFixed(4)}, step=${(df !== 0 ? (-f/df) : 'N/A')}`);
+    if (Math.abs(f) < 0.001) { console.log(`  Converged at iter ${iter}`); break; }
+    if (df === 0 || !isFinite(df)) { console.log(`  STOPPED: df=${df} is zero or non-finite`); break; }
+    lambda -= f / df;
+  }
+  console.log('');
+
+  // Final allocation and marginal growth check
+  console.log('--- Final allocation ---');
+  let total = 0;
+  for (const row of rows) {
+    const m = effectiveM(row), h = effectiveH(row);
+    const x = xForLambda(row.c, m, h, lambda);
+    const marginal = dGdx(x, row.c, m, h);
+    console.log(`  "${row.name || 'unnamed'}": optimal_x=${x.toFixed(2)}, dG/dx at optimal=${marginal.toFixed(6)}`);
+    total += x;
+  }
+  console.log(`  Total allocated: ${total.toFixed(2)} (target: ${p}, error: ${(total-p).toFixed(4)})`);
+  console.log(`  Final lambda: ${lambda.toFixed(6)}`);
   console.log('=== END DEBUG ===');
 }
 
