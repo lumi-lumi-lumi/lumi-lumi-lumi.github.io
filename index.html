@@ -7,7 +7,6 @@
   :root {
     --bg: #1a1a1a;
     --surface: #242424;
-    --surface2: #2e2e2e;
     --border: #444;
     --text: #e0e0e0;
     --text-dim: #888;
@@ -30,7 +29,6 @@
   body.light {
     --bg: #ffffff;
     --surface: #f5f5f5;
-    --surface2: #ebebeb;
     --border: #ccc;
     --text: #111;
     --text-dim: #666;
@@ -140,7 +138,7 @@ function effectiveM(row) { return 1 + (empireGrowth() + row.growthMod) / 100; }
 function effectiveH(row) { return 1 + (empireHousing() + row.housingMod) / 100; }
 
 function addRow() {
-  rows.push({ id: rowId++, name: '', c: 6000, growthMod: 0, housingMod: 0, pop: 3000 });
+  rows.push({ id: rowId++, name: '', c: 6000, growthMod: 0, housingMod: 0, pop: 0 });
   renderTable();
   solve();
 }
@@ -150,11 +148,6 @@ function baseGrowth(x, c, h) {
   const denom = c + x * (1 - h);
   if (denom <= 0 || x <= 0) return 0;
   return x * (1 - x / denom) / 400;
-}
-
-// Modified growth = base * effective m
-function modifiedGrowth(x, c, m, h) {
-  return baseGrowth(x, c, h) * m;
 }
 
 function deleteRow(id) {
@@ -172,10 +165,6 @@ function updateRow(id, field, value) {
     document.getElementById('totalPop').value = total;
   }
   solve();
-  const em = document.getElementById(`effM-${id}`);
-  const eh = document.getElementById(`effH-${id}`);
-  if (em) em.textContent = (effectiveM(row) * 100).toFixed(1) + '%';
-  if (eh) eh.textContent = effectiveH(row).toFixed(3);
 }
 
 function renderTable() {
@@ -229,54 +218,12 @@ function renderTable() {
   tbody.appendChild(tfoot);
 }
 
-// Growth = m * x * (1 - x / (c + x*(1-h))) / 400
-// dG/dx = (m/400) * (1 - x*(2c + x*(1-h)) / (c + x*(1-h))^2)
-// Setting dG/dx = lambda, with k = 400*lambda/m:
-// (1-k)*(c + x*(1-h))^2 - x*(2c + x*(1-h)) = 0
-// Quadratic in x:
-//   a = (1-k)*(1-h)^2 - (1-h)
-//   b = (1-k)*2c*(1-h) - 2c
-//   c0 = (1-k)*c^2
-function optimalX(c, m, h, lambda, log=false) {
-  const k = lambda * 400 / m;
-  const oh = 1 - h;
-  const a  = (1 - k) * oh * oh - oh;
-  const b  = (1 - k) * 2 * c * oh - 2 * c;
-  const c0 = (1 - k) * c * c;
-
-  if (log) console.log(`  optimalX(c=${c}, m=${m}, h=${h}, lambda=${lambda}): k=${k}, oh=${oh}, a=${a}, b=${b}, c0=${c0}`);
-
-  if (Math.abs(a) < 1e-12) {
-    const x = Math.abs(b) < 1e-12 ? 0 : Math.max(0, -c0 / b);
-    if (log) console.log(`  -> linear case, x=${x}`);
-    return x;
-  }
-
-  const disc = b * b - 4 * a * c0;
-  if (log) console.log(`  disc=${disc}`);
-  if (disc < 0) { if (log) console.log(`  -> disc<0, returning 0`); return 0; }
-  const sq = Math.sqrt(disc);
-  const x1 = (-b + sq) / (2 * a);
-  const x2 = (-b - sq) / (2 * a);
-  if (log) console.log(`  x1=${x1}, x2=${x2}`);
-
-  const peak = unconstrainedPeak(c, h);
-  if (log) console.log(`  unconstrainedPeak=${peak}`);
-  const candidates = [x1, x2].filter(x => x >= -1e-9).map(x => Math.max(0, x));
-  if (log) console.log(`  candidates=${candidates}`);
-  if (candidates.length === 0) return 0;
-  if (candidates.length === 1) return candidates[0];
-  const result = candidates.reduce((best, x) => Math.abs(x - peak) < Math.abs(best - peak) ? x : best);
-  if (log) console.log(`  -> result=${result}`);
-  return result;
-}
-
 function toggleTheme() {
   const isLight = document.body.classList.toggle('light');
   document.getElementById('themeToggle').textContent = isLight ? '⏾ Dark Mode' : '☀ Light Mode';
 }
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 console.log(`Population Optimizer v${VERSION} initializing`);
 
 function doExport() {
@@ -320,15 +267,12 @@ function doImport() {
   solve();
 }
 
-function totalForLambda(lambda) {
-  return rows.reduce((sum, r) => sum + xForLambda(r.c, effectiveM(r), effectiveH(r), lambda), 0);
-}
-
 function debugSolve() {
   const p = parseFloat(document.getElementById('totalPop').value);
   console.log(`=== DEBUG SOLVE v${VERSION} ===`);
   console.log(`Target population: ${p}`);
   console.log(`Empire modifiers: growth=${empireGrowth()}%, housing=${empireHousing()}%`);
+  if (p === 0) { console.log('Target is 0 — trivial solution, all x_i = 0'); console.log('=== END DEBUG ==='); return; }
   console.log('');
 
   // Per-planet summary
@@ -342,12 +286,26 @@ function debugSolve() {
   console.log('');
 
   // Newton iteration trace
-  console.log('--- Newton iteration trace ---');
-  const n = rows.length;
-  const x0 = p / n;
-  let lambda = rows.reduce((sum, r) => sum + dGdx(x0, r.c, effectiveM(r), effectiveH(r)), 0) / n;
-  console.log(`  Starting lambda (avg dG/dx at equal share ${x0.toFixed(1)}): ${lambda.toFixed(6)}`);
-
+  console.log('--- Newton+bisection iteration trace ---');
+  function dbEvalF(lam) {
+    let total = 0;
+    for (const row of rows) total += xForLambda(row.c, effectiveM(row), effectiveH(row), lam);
+    return total - p;
+  }
+  let dbLo = 0, dbHi = 0.0001;
+  for (let i = 0; i < 200; i++) {
+    if (dbEvalF(dbHi) < 0) break;
+    dbHi *= 2;
+  }
+  if (dbEvalF(dbLo) <= 0) {
+    dbLo = -0.0001;
+    for (let i = 0; i < 200; i++) {
+      if (dbEvalF(dbLo) > 0) break;
+      dbLo *= 2;
+    }
+  }
+  console.log(`  Bracket: lo=${dbLo.toFixed(6)} (f=${dbEvalF(dbLo).toFixed(2)}), hi=${dbHi.toFixed(6)} (f=${dbEvalF(dbHi).toFixed(2)})`);
+  let lambda = (dbLo + dbHi) / 2;
   for (let iter = 0; iter < 100; iter++) {
     let f = -p, df = 0;
     for (const row of rows) {
@@ -356,10 +314,13 @@ function debugSolve() {
       const d2 = d2Gdx2(x, row.c, effectiveM(row), effectiveH(row));
       if (d2 !== 0 && isFinite(d2)) df += 1 / d2;
     }
-    console.log(`  iter ${iter}: lambda=${lambda.toFixed(6)}, f(lambda)=${f.toFixed(4)}, f'(lambda)=${df.toFixed(4)}, step=${(df !== 0 ? (-f/df) : 'N/A')}`);
     if (Math.abs(f) < 0.001) { console.log(`  Converged at iter ${iter}`); break; }
-    if (df === 0 || !isFinite(df)) { console.log(`  STOPPED: df=${df} is zero or non-finite`); break; }
-    lambda -= f / df;
+    if (f > 0) dbLo = lambda; else dbHi = lambda;
+    let lambdaNew = (df !== 0 && isFinite(df)) ? lambda - f / df : (dbLo + dbHi) / 2;
+    const usedBisect = lambdaNew <= dbLo || lambdaNew >= dbHi;
+    if (usedBisect) lambdaNew = (dbLo + dbHi) / 2;
+    console.log(`  iter ${iter}: lambda=${lambda.toFixed(6)}, f=${f.toFixed(4)}, f'=${df.toFixed(2)}, next=${lambdaNew.toFixed(6)} ${usedBisect ? '(bisect)' : '(newton)'}`);
+    lambda = lambdaNew;
   }
   console.log('');
 
@@ -392,7 +353,7 @@ function d2Gdx2(x, c, m, h) {
   return -(m / 400) * 2 * c * c / (q * q * q);
 }
 
-// dG/dx at a given x
+// dG/dx at a given x (used by debugSolve)
 function dGdx(x, c, m, h) {
   const q = c + x * (1 - h);
   if (q <= 0) return -Infinity;
@@ -409,62 +370,107 @@ function xForLambda(c, m, h, lambda) {
   const c0 = (1 - k) * c * c;
 
   if (Math.abs(a) < 1e-12) {
-    return Math.abs(b) < 1e-12 ? 0 : Math.max(0, -c0 / b);
+    const x = Math.abs(b) < 1e-12 ? 0 : Math.max(0, -c0 / b);
+    const qLimit = h > 1 ? c / (h - 1) : Infinity;
+    return x < qLimit ? x : 0;
   }
   const disc = b * b - 4 * a * c0;
   if (disc < 0) return 0;
   const sq = Math.sqrt(disc);
   const x1 = (-b + sq) / (2 * a);
   const x2 = (-b - sq) / (2 * a);
-  const peak = unconstrainedPeak(c, h);
-  const candidates = [x1, x2].filter(x => x >= -1e-9).map(x => Math.max(0, x));
+  // Filter: x >= 0 AND physically valid (q = c + x*(1-h) > 0)
+  const qLimit = h > 1 ? c / (h - 1) : Infinity;
+  const candidates = [x1, x2].filter(x => x >= -1e-9 && x < qLimit).map(x => Math.max(0, x));
   if (candidates.length === 0) return 0;
   if (candidates.length === 1) return candidates[0];
+  // pick the root on the concave (growth-increasing) side of the curve
+  const peak = unconstrainedPeak(c, h);
   return candidates.reduce((best, x) => Math.abs(x - peak) < Math.abs(best - peak) ? x : best);
 }
 
 function solve() {
-  // refresh computed cells
-  for (const row of rows) {
+  // Cache effective modifiers (avoids repeated DOM reads of empire inputs)
+  const planets = rows.map(row => ({
+    row, c: row.c, m: effectiveM(row), h: effectiveH(row)
+  }));
+
+  // Refresh computed cells and current growth
+  for (const { row, c, m, h } of planets) {
     const em = document.getElementById(`effM-${row.id}`);
     const eh = document.getElementById(`effH-${row.id}`);
-    if (em) em.textContent = (effectiveM(row) * 100).toFixed(1) + '%';
-    if (eh) eh.textContent = effectiveH(row).toFixed(3);
+    if (em) em.textContent = (m * 100).toFixed(1) + '%';
+    if (eh) eh.textContent = h.toFixed(3);
+    const bg = baseGrowth(row.pop, c, h);
+    const bgEl = document.getElementById(`curBG-${row.id}`);
+    const mgEl = document.getElementById(`curMG-${row.id}`);
+    if (bgEl) bgEl.textContent = bg.toFixed(4);
+    if (mgEl) mgEl.textContent = (bg * m).toFixed(4);
   }
-  updateCurrentGrowth();
 
   const p = parseFloat(document.getElementById('totalPop').value);
-  if (rows.length === 0) { setStatus('Add planets to begin', false); clearOutputs(); return; }
-  if (isNaN(p) || p < 0) { setStatus('Invalid total population', true); clearOutputs(); return; }
+  if (rows.length === 0) { setStatus('Add planets to begin', false); clearOutputs(); updateTotals(planets); return; }
+  if (isNaN(p) || p < 0) { setStatus('Invalid total population', true); clearOutputs(); updateTotals(planets); return; }
 
-  // Newton's method on f(lambda) = sum(x_i(lambda)) - p
-  // f'(lambda) = sum(dx_i/dlambda) = sum(1 / d2G_i/dx_i^2)
-  // Starting point: lambda = dG/dx evaluated at equal share p/n
-  const n = rows.length;
-  const x0 = p / n;
-  // estimate starting lambda as average marginal growth at equal share
-  let lambda = rows.reduce((sum, r) => sum + dGdx(x0, r.c, effectiveM(r), effectiveH(r)), 0) / n;
+  // Handle p=0 trivially
+  if (p === 0) {
+    const results = planets.map(({ row, c, m, h }) => {
+      setOutputCells(row.id, 0, c, m, h);
+      return { x: 0, c, m, h };
+    });
+    setStatus('Optimal distribution found (λ = N/A)', false);
+    updateTotals(planets, results);
+    return;
+  }
 
-  let converged = false;
+  // Helper: evaluate f(lambda) = sum(x_i(lambda)) - p
+  function evalF(lam) {
+    let total = 0;
+    for (const { c, m, h } of planets) total += xForLambda(c, m, h, lam);
+    return total - p;
+  }
+
+  // Find valid bracket [lo, hi] where f(lo) > 0 and f(hi) < 0
+  let bisectLo = 0, bisectHi = 0.0001;
+  for (let i = 0; i < 200; i++) {
+    if (evalF(bisectHi) < 0) break;
+    bisectHi *= 2;
+  }
+  if (evalF(bisectLo) <= 0) {
+    bisectLo = -0.0001;
+    for (let i = 0; i < 200; i++) {
+      if (evalF(bisectLo) > 0) break;
+      bisectLo *= 2;
+    }
+  }
+
+  // Newton's method with bisection fallback
+  let lambda = (bisectLo + bisectHi) / 2;
   for (let iter = 0; iter < 100; iter++) {
-    let f = -p;
-    let df = 0;
-    for (const row of rows) {
-      const x = xForLambda(row.c, effectiveM(row), effectiveH(row), lambda);
+    let f = -p, df = 0;
+    for (const { c, m, h } of planets) {
+      const x = xForLambda(c, m, h, lambda);
       f += x;
-      const d2 = d2Gdx2(x, row.c, effectiveM(row), effectiveH(row));
-      // dx/dlambda = 1 / (d2G/dx2)
+      const d2 = d2Gdx2(x, c, m, h);
       if (d2 !== 0 && isFinite(d2)) df += 1 / d2;
     }
-    if (Math.abs(f) < 0.001) { converged = true; break; }
-    if (df === 0 || !isFinite(df)) break;
-    lambda -= f / df;
+    if (Math.abs(f) < 0.001) break;
+
+    if (f > 0) bisectLo = lambda; else bisectHi = lambda;
+
+    let lambdaNew = (df !== 0 && isFinite(df)) ? lambda - f / df : (bisectLo + bisectHi) / 2;
+    if (lambdaNew <= bisectLo || lambdaNew >= bisectHi) {
+      lambdaNew = (bisectLo + bisectHi) / 2;
+    }
+    lambda = lambdaNew;
   }
 
   let total = 0;
-  for (const row of rows) {
-    const x = xForLambda(row.c, effectiveM(row), effectiveH(row), lambda);
-    setOutput(row.id, x);
+  const results = [];
+  for (const { row, c, m, h } of planets) {
+    const x = xForLambda(c, m, h, lambda);
+    setOutputCells(row.id, x, c, m, h);
+    results.push({ x, c, m, h });
     total += x;
   }
 
@@ -474,66 +480,57 @@ function solve() {
   } else {
     setStatus(`Optimal distribution found (λ = ${lambda.toFixed(6)})`, false);
   }
+  updateTotals(planets, results);
 }
 
-function setOutput(id, x) {
-  const row = rows.find(r => r.id === id);
+function setOutputCells(id, x, c, m, h) {
   const optEl = document.getElementById(`opt-${id}`);
   const optBGEl = document.getElementById(`optBG-${id}`);
   const optMGEl = document.getElementById(`optMG-${id}`);
   if (optEl) optEl.textContent = x.toFixed(2);
-  if (row) {
-    const bg = baseGrowth(x, row.c, effectiveH(row));
-    if (optBGEl) optBGEl.textContent = bg.toFixed(4);
-    if (optMGEl) optMGEl.textContent = (bg * effectiveM(row)).toFixed(4);
-  }
-  updateTotals();
+  const bg = baseGrowth(x, c, h);
+  if (optBGEl) optBGEl.textContent = bg.toFixed(4);
+  if (optMGEl) optMGEl.textContent = (bg * m).toFixed(4);
 }
 
-function updateCurrentGrowth() {
-  for (const row of rows) {
-    const bgEl = document.getElementById(`curBG-${row.id}`);
-    const mgEl = document.getElementById(`curMG-${row.id}`);
-    if (bgEl || mgEl) {
-      const bg = baseGrowth(row.pop, row.c, effectiveH(row));
-      if (bgEl) bgEl.textContent = bg.toFixed(4);
-      if (mgEl) mgEl.textContent = (bg * effectiveM(row)).toFixed(4);
-    }
-  }
-  updateTotals();
-}
-
-function updateTotals() {
+function updateTotals(planets, optimalResults) {
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-  set('tot-c',     rows.reduce((s, r) => s + r.c, 0).toFixed(0));
-  set('tot-pop',   rows.reduce((s, r) => s + r.pop, 0).toFixed(0));
+  set('tot-c',   planets.reduce((s, { c }) => s + c, 0).toFixed(0));
+  set('tot-pop', planets.reduce((s, { row }) => s + row.pop, 0).toFixed(0));
 
-  let curBG = 0, curMG = 0, optPop = 0, optBG = 0, optMG = 0;
-  for (const row of rows) {
-    const bg = baseGrowth(row.pop, row.c, effectiveH(row));
+  let curBG = 0, curMG = 0;
+  for (const { row, c, m, h } of planets) {
+    const bg = baseGrowth(row.pop, c, h);
     curBG += bg;
-    curMG += bg * effectiveM(row);
-
-    const optEl = document.getElementById(`opt-${row.id}`);
-    const ox = optEl ? parseFloat(optEl.textContent) : 0;
-    if (!isNaN(ox)) {
-      optPop += ox;
-      const obg = baseGrowth(ox, row.c, effectiveH(row));
-      optBG += obg;
-      optMG += obg * effectiveM(row);
-    }
+    curMG += bg * m;
   }
   set('tot-curBG', curBG.toFixed(4));
   set('tot-curMG', curMG.toFixed(4));
-  set('tot-opt',   optPop.toFixed(2));
-  set('tot-optBG', optBG.toFixed(4));
-  set('tot-optMG', optMG.toFixed(4));
+
+  if (optimalResults) {
+    let optPop = 0, optBG = 0, optMG = 0;
+    for (const { x, c, m, h } of optimalResults) {
+      optPop += x;
+      const bg = baseGrowth(x, c, h);
+      optBG += bg;
+      optMG += bg * m;
+    }
+    set('tot-opt',   optPop.toFixed(2));
+    set('tot-optBG', optBG.toFixed(4));
+    set('tot-optMG', optMG.toFixed(4));
+  } else {
+    set('tot-opt',   '—');
+    set('tot-optBG', '—');
+    set('tot-optMG', '—');
+  }
 }
 
 function clearOutputs() {
   for (const row of rows) {
-    const el = document.getElementById(`opt-${row.id}`);
-    if (el) el.textContent = '—';
+    for (const prefix of ['opt', 'optBG', 'optMG']) {
+      const el = document.getElementById(`${prefix}-${row.id}`);
+      if (el) el.textContent = '—';
+    }
   }
 }
 
@@ -548,13 +545,13 @@ document.getElementById('empireGrowth').addEventListener('input', () => { render
 document.getElementById('empireHousing').addEventListener('input', () => { renderTable(); solve(); });
 
 // Seed
-addRow();
-rows[0].name = 'Planet 1'; rows[0].c = 6000;
-addRow();
-rows[1].name = 'Planet 2'; rows[1].c = 6000;
-addRow();
-rows[2].name = 'Planet 3'; rows[2].c = 6000;
-document.getElementById('totalPop').value = rows.reduce((sum, r) => sum + r.pop, 0);
+rows = [
+  { id: 0, name: 'Planet 1', c: 6000, growthMod: 0, housingMod: 0, pop: 3000 },
+  { id: 1, name: 'Planet 2', c: 6000, growthMod: 0, housingMod: 0, pop: 3000 },
+  { id: 2, name: 'Planet 3', c: 6000, growthMod: 0, housingMod: 0, pop: 3000 },
+];
+rowId = 3;
+document.getElementById('totalPop').value = 9000;
 renderTable();
 solve();
 </script>
