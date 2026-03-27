@@ -25,6 +25,8 @@
     --btn-bg: #333;
     --btn-border: #555;
     --btn-fg: #ccc;
+    --tog-collapsed-bg: #1a1a1a;
+    --tog-collapsed-fg: #555;
   }
   body.light {
     --bg: #ffffff;
@@ -47,6 +49,8 @@
     --btn-bg: #fff;
     --btn-border: #ccc;
     --btn-fg: #333;
+    --tog-collapsed-bg: #eee;
+    --tog-collapsed-fg: #aaa;
   }
   body { font-family: monospace; padding: 20px; background: var(--bg); color: var(--text); }
   table { border-collapse: collapse; width: 100%; }
@@ -67,6 +71,10 @@
   .no-spin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   .no-spin[type=number] { -moz-appearance: textfield; }
   tr.totals-row { background: var(--th-bg); color: var(--text); font-weight: bold; }
+  .col-toggle-bar { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; align-items: center; }
+  .col-toggle-bar .label { font-size: 12px; color: var(--text-dim); margin-right: 2px; }
+  .col-toggle-bar button { margin-top: 0; padding: 2px 7px; font-size: 11px; }
+  .col-toggle-bar button.col-collapsed { background: var(--tog-collapsed-bg); color: var(--tog-collapsed-fg); border-color: var(--tog-collapsed-fg); text-decoration: line-through; }
 </style>
 </head>
 <body>
@@ -87,25 +95,34 @@
     <label>Empire Housing Usage Modifier (%)</label>
     <input type="number" id="empireHousing" value="0" step="any">
   </div>
+  <div>
+    <label>Assembled Pop Housing Usage Modifier (%)</label>
+    <input type="number" id="assembledHousingMod" value="0" step="any">
+  </div>
 </div>
 
 <div class="status" id="status">Ready</div>
+
+<div class="col-toggle-bar" id="colToggles">
+  <span class="label">Columns:</span>
+</div>
 
 <table>
   <thead>
     <tr>
       <th>Name</th>
-      <th>Planet Capacity</th>
-      <th>Population</th>
-      <th>Planetary Growth Modifier (%)</th>
-      <th>Effective Growth Modifier (%)</th>
-      <th>Planetary Housing Usage Modifier (%)</th>
-      <th>Housing Usage per Pop</th>
-      <th>Current Base Growth</th>
-      <th>Current Modified Growth</th>
-      <th>Optimal Population</th>
-      <th>Optimal Base Growth</th>
-      <th>Optimal Modified Growth</th>
+      <th data-col="c">Planet Capacity</th>
+      <th data-col="pop">Organic Pops</th>
+      <th data-col="assembledPop">Assembled Pops</th>
+      <th data-col="growthMod">Planetary Growth Modifier (%)</th>
+      <th data-col="effM">Effective Growth Modifier (%)</th>
+      <th data-col="housingMod">Planetary Housing Usage Modifier (%)</th>
+      <th data-col="effH">Housing Usage per Pop</th>
+      <th data-col="curBG">Current Base Growth</th>
+      <th data-col="curMG">Current Modified Growth</th>
+      <th data-col="opt">Optimal Population</th>
+      <th data-col="optBG">Optimal Base Growth</th>
+      <th data-col="optMG">Optimal Modified Growth</th>
       <th></th>
     </tr>
   </thead>
@@ -129,16 +146,39 @@
 let rows = [];
 let rowId = 0;
 
+const COLS = [
+  { key: 'c',            label: 'Planet Capacity' },
+  { key: 'pop',          label: 'Organic Pops' },
+  { key: 'assembledPop', label: 'Assembled Pops' },
+  { key: 'growthMod',    label: 'Plan. Growth Mod' },
+  { key: 'effM',         label: 'Eff. Growth Mod' },
+  { key: 'housingMod',   label: 'Plan. Housing Mod' },
+  { key: 'effH',         label: 'Housing/Pop' },
+  { key: 'curBG',        label: 'Cur. Base Growth' },
+  { key: 'curMG',        label: 'Cur. Mod. Growth' },
+  { key: 'opt',          label: 'Optimal Pop' },
+  { key: 'optBG',        label: 'Opt. Base Growth' },
+  { key: 'optMG',        label: 'Opt. Mod. Growth' },
+];
+let collapsedCols = new Set();
+
 function empireGrowth() { return parseFloat(document.getElementById('empireGrowth').value) || 0; }
 function empireHousing() { return parseFloat(document.getElementById('empireHousing').value) || 0; }
+function assembledHousingMod() { return parseFloat(document.getElementById('assembledHousingMod').value) || 0; }
 
 // m = 1 + (empireGrowth% + planetGrowth%) / 100
 function effectiveM(row) { return 1 + (empireGrowth() + row.growthMod) / 100; }
 // h = 1 + (empireHousing% + planetHousing%) / 100
 function effectiveH(row) { return 1 + (empireHousing() + row.housingMod) / 100; }
+// Assembled pops reduce effective planet capacity:
+//   effectiveC = c - assembledPop * (1 + assembledHousingMod/100)
+// e.g. c=10000, assembledPop=500, mod=-50% → 10000 - 500*(1-0.5) = 9750
+function effectiveC(row) {
+  return Math.max(1, row.c - row.assembledPop * (1 + assembledHousingMod() / 100));
+}
 
 function addRow() {
-  rows.push({ id: rowId++, name: '', c: 6000, growthMod: 0, housingMod: 0, pop: 0 });
+  rows.push({ id: rowId++, name: '', c: 6000, growthMod: 0, housingMod: 0, pop: 0, assembledPop: 0 });
   renderTable();
   solve();
 }
@@ -175,23 +215,26 @@ function renderTable() {
     tr.innerHTML = `
       <td><input type="text" value="${row.name}" placeholder="Planet ${row.id + 1}"
         oninput="updateRow(${row.id}, 'name', this.value)"></td>
-      <td><input type="number" value="${row.c}" min="0" step="1" class="no-spin"
+      <td data-col="c"><input type="number" value="${row.c}" min="0" step="1" class="no-spin"
         oninput="updateRow(${row.id}, 'c', this.value)"
         onkeydown="if(event.key==='ArrowUp'){event.preventDefault();this.value=+this.value+100;updateRow(${row.id},'c',this.value)}if(event.key==='ArrowDown'){event.preventDefault();this.value=Math.max(0,+this.value-100);updateRow(${row.id},'c',this.value)}"></td>
-      <td><input type="number" value="${row.pop}" min="0" step="1" class="no-spin"
+      <td data-col="pop"><input type="number" value="${row.pop}" min="0" step="1" class="no-spin"
         oninput="updateRow(${row.id}, 'pop', this.value)"
         onkeydown="if(event.key==='ArrowUp'){event.preventDefault();this.value=+this.value+100;updateRow(${row.id},'pop',this.value)}if(event.key==='ArrowDown'){event.preventDefault();this.value=Math.max(0,+this.value-100);updateRow(${row.id},'pop',this.value)}"></td>
-      <td><input type="number" value="${row.growthMod}" step="any"
+      <td data-col="assembledPop"><input type="number" value="${row.assembledPop}" min="0" step="1" class="no-spin"
+        oninput="updateRow(${row.id}, 'assembledPop', this.value)"
+        onkeydown="if(event.key==='ArrowUp'){event.preventDefault();this.value=+this.value+100;updateRow(${row.id},'assembledPop',this.value)}if(event.key==='ArrowDown'){event.preventDefault();this.value=Math.max(0,+this.value-100);updateRow(${row.id},'assembledPop',this.value)}"></td>
+      <td data-col="growthMod"><input type="number" value="${row.growthMod}" step="any"
         oninput="updateRow(${row.id}, 'growthMod', this.value)"> %</td>
-      <td class="computed" id="effM-${row.id}">${(effectiveM(row)*100).toFixed(1)}%</td>
-      <td><input type="number" value="${row.housingMod}" step="any"
+      <td class="computed" data-col="effM" id="effM-${row.id}">${(effectiveM(row)*100).toFixed(1)}%</td>
+      <td data-col="housingMod"><input type="number" value="${row.housingMod}" step="any"
         oninput="updateRow(${row.id}, 'housingMod', this.value)"> %</td>
-      <td class="computed" id="effH-${row.id}">${effectiveH(row).toFixed(3)}</td>
-      <td class="computed" id="curBG-${row.id}">—</td>
-      <td class="computed" id="curMG-${row.id}">—</td>
-      <td class="output" id="opt-${row.id}">—</td>
-      <td class="computed" id="optBG-${row.id}">—</td>
-      <td class="computed" id="optMG-${row.id}">—</td>
+      <td class="computed" data-col="effH" id="effH-${row.id}">${effectiveH(row).toFixed(3)}</td>
+      <td class="computed" data-col="curBG" id="curBG-${row.id}">—</td>
+      <td class="computed" data-col="curMG" id="curMG-${row.id}">—</td>
+      <td class="output" data-col="opt" id="opt-${row.id}">—</td>
+      <td class="computed" data-col="optBG" id="optBG-${row.id}">—</td>
+      <td class="computed" data-col="optMG" id="optMG-${row.id}">—</td>
       <td><button onclick="deleteRow(${row.id})">×</button></td>
     `;
     tbody.appendChild(tr);
@@ -202,20 +245,88 @@ function renderTable() {
   tfoot.className = 'totals-row';
   tfoot.innerHTML = `
     <td>Total</td>
-    <td id="tot-c">—</td>
-    <td id="tot-pop">—</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td id="tot-curBG">—</td>
-    <td id="tot-curMG">—</td>
-    <td id="tot-opt">—</td>
-    <td id="tot-optBG">—</td>
-    <td id="tot-optMG">—</td>
+    <td data-col="c" id="tot-c">—</td>
+    <td data-col="pop" id="tot-pop">—</td>
+    <td data-col="assembledPop" id="tot-assembledPop">—</td>
+    <td data-col="growthMod"></td>
+    <td data-col="effM"></td>
+    <td data-col="housingMod"></td>
+    <td data-col="effH"></td>
+    <td data-col="curBG" id="tot-curBG">—</td>
+    <td data-col="curMG" id="tot-curMG">—</td>
+    <td data-col="opt" id="tot-opt">—</td>
+    <td data-col="optBG" id="tot-optBG">—</td>
+    <td data-col="optMG" id="tot-optMG">—</td>
     <td></td>
   `;
   tbody.appendChild(tfoot);
+  applyColVisibility();
+}
+
+function buildColToggles() {
+  const bar = document.getElementById('colToggles');
+  // clear any previously built buttons (keep the label span)
+  const label = bar.querySelector('.label');
+  bar.innerHTML = '';
+  bar.appendChild(label);
+  for (const col of COLS) {
+    const btn = document.createElement('button');
+    btn.id = `tog-${col.key}`;
+    btn.textContent = col.label;
+    btn.onclick = () => toggleCol(col.key);
+    bar.appendChild(btn);
+  }
+}
+
+function toggleCol(key) {
+  if (collapsedCols.has(key)) collapsedCols.delete(key);
+  else collapsedCols.add(key);
+  applyColVisibility();
+  saveState();
+}
+
+const LS_KEY = 'stellaris-pop-optimizer';
+
+function saveState() {
+  const data = {
+    totalPop: parseFloat(document.getElementById('totalPop').value) || 0,
+    empireGrowth: parseFloat(document.getElementById('empireGrowth').value) || 0,
+    empireHousing: parseFloat(document.getElementById('empireHousing').value) || 0,
+    assembledHousingMod: parseFloat(document.getElementById('assembledHousingMod').value) || 0,
+    collapsedCols: [...collapsedCols],
+    planets: rows.map(r => ({ name: r.name, c: r.c, growthMod: r.growthMod, housingMod: r.housingMod, pop: r.pop, assembledPop: r.assembledPop }))
+  };
+  try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch(e) { /* storage full or blocked */ }
+}
+
+function loadState() {
+  let data;
+  try { data = JSON.parse(localStorage.getItem(LS_KEY)); } catch(e) { return false; }
+  if (!data) return false;
+  if (data.empireGrowth !== undefined) document.getElementById('empireGrowth').value = data.empireGrowth;
+  if (data.empireHousing !== undefined) document.getElementById('empireHousing').value = data.empireHousing;
+  if (data.assembledHousingMod !== undefined) document.getElementById('assembledHousingMod').value = data.assembledHousingMod;
+  if (data.totalPop !== undefined) document.getElementById('totalPop').value = data.totalPop;
+  if (Array.isArray(data.collapsedCols)) collapsedCols = new Set(data.collapsedCols);
+  if (Array.isArray(data.planets)) {
+    rows = [];
+    rowId = 0;
+    for (const p of data.planets) {
+      rows.push({ id: rowId++, name: p.name || '', c: p.c || 0, growthMod: p.growthMod || 0, housingMod: p.housingMod || 0, pop: p.pop || 0, assembledPop: p.assembledPop || 0 });
+    }
+  }
+  return true;
+}
+
+function applyColVisibility() {
+  for (const col of COLS) {
+    const hidden = collapsedCols.has(col.key);
+    document.querySelectorAll(`[data-col="${col.key}"]`).forEach(el => {
+      el.style.display = hidden ? 'none' : '';
+    });
+    const btn = document.getElementById(`tog-${col.key}`);
+    if (btn) btn.classList.toggle('col-collapsed', hidden);
+  }
 }
 
 function toggleTheme() {
@@ -223,7 +334,7 @@ function toggleTheme() {
   document.getElementById('themeToggle').textContent = isLight ? '⏾ Dark Mode' : '☀ Light Mode';
 }
 
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 console.log(`Population Optimizer v${VERSION} initializing`);
 
 function doExport() {
@@ -231,7 +342,9 @@ function doExport() {
     totalPop: parseFloat(document.getElementById('totalPop').value) || 0,
     empireGrowth: parseFloat(document.getElementById('empireGrowth').value) || 0,
     empireHousing: parseFloat(document.getElementById('empireHousing').value) || 0,
-    planets: rows.map(r => ({ name: r.name, c: r.c, growthMod: r.growthMod, housingMod: r.housingMod, pop: r.pop }))
+    assembledHousingMod: parseFloat(document.getElementById('assembledHousingMod').value) || 0,
+    collapsedCols: [...collapsedCols],
+    planets: rows.map(r => ({ name: r.name, c: r.c, growthMod: r.growthMod, housingMod: r.housingMod, pop: r.pop, assembledPop: r.assembledPop }))
   };
   const box = document.getElementById('exportBox');
   document.getElementById('exportText').value = JSON.stringify(data, null, 2);
@@ -254,11 +367,19 @@ function doImport() {
   }
   if (data.empireGrowth !== undefined) document.getElementById('empireGrowth').value = data.empireGrowth;
   if (data.empireHousing !== undefined) document.getElementById('empireHousing').value = data.empireHousing;
+  if (data.assembledHousingMod !== undefined) document.getElementById('assembledHousingMod').value = data.assembledHousingMod;
+  if (Array.isArray(data.collapsedCols)) {
+    collapsedCols = new Set(data.collapsedCols);
+    for (const col of COLS) {
+      const btn = document.getElementById(`tog-${col.key}`);
+      if (btn) btn.classList.toggle('col-collapsed', collapsedCols.has(col.key));
+    }
+  }
   if (Array.isArray(data.planets)) {
     rows = [];
     rowId = 0;
     for (const p of data.planets) {
-      rows.push({ id: rowId++, name: p.name || '', c: p.c || 0, growthMod: p.growthMod || 0, housingMod: p.housingMod || 0, pop: p.pop || 0 });
+      rows.push({ id: rowId++, name: p.name || '', c: p.c || 0, growthMod: p.growthMod || 0, housingMod: p.housingMod || 0, pop: p.pop || 0, assembledPop: p.assembledPop || 0 });
     }
   }
   if (data.totalPop !== undefined) document.getElementById('totalPop').value = data.totalPop;
@@ -271,25 +392,26 @@ function debugSolve() {
   const p = parseFloat(document.getElementById('totalPop').value);
   console.log(`=== DEBUG SOLVE v${VERSION} ===`);
   console.log(`Target population: ${p}`);
-  console.log(`Empire modifiers: growth=${empireGrowth()}%, housing=${empireHousing()}%`);
+  console.log(`Empire modifiers: growth=${empireGrowth()}%, housing=${empireHousing()}%, assembledHousing=${assembledHousingMod()}%`);
   if (p === 0) { console.log('Target is 0 — trivial solution, all x_i = 0'); console.log('=== END DEBUG ==='); return; }
   console.log('');
 
   // Per-planet summary
   console.log('--- Per-planet parameters ---');
   for (const row of rows) {
-    const m = effectiveM(row), h = effectiveH(row);
-    const peak = unconstrainedPeak(row.c, h);
-    console.log(`  "${row.name || 'unnamed'}": c=${row.c}, pop=${row.pop}, m=${m.toFixed(4)}, h=${h.toFixed(4)}, unconstrained_peak=${peak.toFixed(2)}, current_dGdx=${dGdx(row.pop, row.c, m, h).toFixed(6)}`);
+    const m = effectiveM(row), h = effectiveH(row), c = effectiveC(row);
+    const peak = unconstrainedPeak(c, h);
+    console.log(`  "${row.name || 'unnamed'}": c=${row.c}, effectiveC=${c}, assembledPop=${row.assembledPop}, pop=${row.pop}, m=${m.toFixed(4)}, h=${h.toFixed(4)}, unconstrained_peak=${peak.toFixed(2)}, current_dGdx=${dGdx(row.pop, c, m, h).toFixed(6)}`);
   }
-  console.log(`  Sum of unconstrained peaks: ${rows.reduce((s,r) => s + unconstrainedPeak(r.c, effectiveH(r)), 0).toFixed(2)}`);
+  console.log(`  Sum of unconstrained peaks: ${rows.reduce((s,r) => s + unconstrainedPeak(effectiveC(r), effectiveH(r)), 0).toFixed(2)}`);
   console.log('');
 
   // Newton iteration trace
   console.log('--- Newton+bisection iteration trace ---');
+  const planets = rows.map(row => ({ row, c: effectiveC(row), m: effectiveM(row), h: effectiveH(row) }));
   function dbEvalF(lam) {
     let total = 0;
-    for (const row of rows) total += xForLambda(row.c, effectiveM(row), effectiveH(row), lam);
+    for (const { c, m, h } of planets) total += xForLambda(c, m, h, lam);
     return total - p;
   }
   let dbLo = 0, dbHi = 0.0001;
@@ -308,10 +430,10 @@ function debugSolve() {
   let lambda = (dbLo + dbHi) / 2;
   for (let iter = 0; iter < 100; iter++) {
     let f = -p, df = 0;
-    for (const row of rows) {
-      const x = xForLambda(row.c, effectiveM(row), effectiveH(row), lambda);
+    for (const { c, m, h } of planets) {
+      const x = xForLambda(c, m, h, lambda);
       f += x;
-      const d2 = d2Gdx2(x, row.c, effectiveM(row), effectiveH(row));
+      const d2 = d2Gdx2(x, c, m, h);
       if (d2 !== 0 && isFinite(d2)) df += 1 / d2;
     }
     if (Math.abs(f) < 0.001) { console.log(`  Converged at iter ${iter}`); break; }
@@ -327,10 +449,9 @@ function debugSolve() {
   // Final allocation and marginal growth check
   console.log('--- Final allocation ---');
   let total = 0;
-  for (const row of rows) {
-    const m = effectiveM(row), h = effectiveH(row);
-    const x = xForLambda(row.c, m, h, lambda);
-    const marginal = dGdx(x, row.c, m, h);
+  for (const { row, c, m, h } of planets) {
+    const x = xForLambda(c, m, h, lambda);
+    const marginal = dGdx(x, c, m, h);
     console.log(`  "${row.name || 'unnamed'}": optimal_x=${x.toFixed(2)}, dG/dx at optimal=${marginal.toFixed(6)}`);
     total += x;
   }
@@ -392,7 +513,7 @@ function xForLambda(c, m, h, lambda) {
 function solve() {
   // Cache effective modifiers (avoids repeated DOM reads of empire inputs)
   const planets = rows.map(row => ({
-    row, c: row.c, m: effectiveM(row), h: effectiveH(row)
+    row, c: effectiveC(row), m: effectiveM(row), h: effectiveH(row)
   }));
 
   // Refresh computed cells and current growth
@@ -481,6 +602,7 @@ function solve() {
     setStatus(`Optimal distribution found (λ = ${lambda.toFixed(6)})`, false);
   }
   updateTotals(planets, results);
+  saveState();
 }
 
 function setOutputCells(id, x, c, m, h) {
@@ -495,8 +617,9 @@ function setOutputCells(id, x, c, m, h) {
 
 function updateTotals(planets, optimalResults) {
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-  set('tot-c',   planets.reduce((s, { c }) => s + c, 0).toFixed(0));
-  set('tot-pop', planets.reduce((s, { row }) => s + row.pop, 0).toFixed(0));
+  set('tot-c',           planets.reduce((s, { row }) => s + row.c, 0).toFixed(0));
+  set('tot-pop',         planets.reduce((s, { row }) => s + row.pop, 0).toFixed(0));
+  set('tot-assembledPop', planets.reduce((s, { row }) => s + row.assembledPop, 0).toFixed(0));
 
   let curBG = 0, curMG = 0;
   for (const { row, c, m, h } of planets) {
@@ -543,15 +666,19 @@ function setStatus(msg, isError) {
 document.getElementById('totalPop').addEventListener('input', solve);
 document.getElementById('empireGrowth').addEventListener('input', () => { renderTable(); solve(); });
 document.getElementById('empireHousing').addEventListener('input', () => { renderTable(); solve(); });
+document.getElementById('assembledHousingMod').addEventListener('input', solve);
 
-// Seed
-rows = [
-  { id: 0, name: 'Planet 1', c: 6000, growthMod: 0, housingMod: 0, pop: 3000 },
-  { id: 1, name: 'Planet 2', c: 6000, growthMod: 0, housingMod: 0, pop: 3000 },
-  { id: 2, name: 'Planet 3', c: 6000, growthMod: 0, housingMod: 0, pop: 3000 },
-];
-rowId = 3;
-document.getElementById('totalPop').value = 9000;
+buildColToggles();
+if (!loadState()) {
+  // Default seed for first-time visitors
+  rows = [
+    { id: 0, name: 'Planet 1', c: 6000, growthMod: 0, housingMod: 0, pop: 3000, assembledPop: 0 },
+    { id: 1, name: 'Planet 2', c: 6000, growthMod: 0, housingMod: 0, pop: 3000, assembledPop: 0 },
+    { id: 2, name: 'Planet 3', c: 6000, growthMod: 0, housingMod: 0, pop: 3000, assembledPop: 0 },
+  ];
+  rowId = 3;
+  document.getElementById('totalPop').value = 9000;
+}
 renderTable();
 solve();
 </script>
