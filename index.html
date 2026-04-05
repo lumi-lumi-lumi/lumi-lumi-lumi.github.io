@@ -114,6 +114,7 @@
       <th data-col="c">Planet Capacity</th>
       <th data-col="pop">Organic Pops</th>
       <th data-col="assembledPop">Assembled Pops</th>
+      <th data-col="popMin">Pop. Minimum</th>
       <th data-col="growthMod">Planetary Growth Modifier (%)</th>
       <th data-col="effM">Effective Growth Modifier (%)</th>
       <th data-col="housingMod">Planetary Housing Usage Modifier (%)</th>
@@ -150,6 +151,7 @@ const COLS = [
   { key: 'c',            label: 'Planet Capacity' },
   { key: 'pop',          label: 'Organic Pops' },
   { key: 'assembledPop', label: 'Assembled Pops' },
+  { key: 'popMin',       label: 'Pop. Minimum' },
   { key: 'growthMod',    label: 'Plan. Growth Mod' },
   { key: 'effM',         label: 'Eff. Growth Mod' },
   { key: 'housingMod',   label: 'Plan. Housing Mod' },
@@ -178,7 +180,7 @@ function effectiveC(row) {
 }
 
 function addRow() {
-  rows.push({ id: rowId++, name: '', c: 6000, growthMod: 0, housingMod: 0, pop: 0, assembledPop: 0 });
+  rows.push({ id: rowId++, name: '', c: 6000, growthMod: 0, housingMod: 0, pop: 0, assembledPop: 0, popMin: 0 });
   renderTable();
   solve();
 }
@@ -188,6 +190,37 @@ function baseGrowth(x, c, h) {
   const denom = c + x * (1 - h);
   if (denom <= 0 || x <= 0) return 0;
   return x * (1 - x / denom) / 400;
+}
+
+const BASE_GROWTH_CAP = 5.0;
+
+// Find the population thresholds where baseGrowth = BASE_GROWTH_CAP.
+// Returns [xCapLow, xCapHigh]. BG >= 5 for x in [xCapLow, xCapHigh].
+// Returns [Infinity, Infinity] if peak BG < 5 (cap never reached).
+function computeXCap(c, h) {
+  const sh = Math.sqrt(Math.max(0, h));
+  const peakBG = h < 1e-12 ? c / 400 : c / (400 * (1 + sh) * (1 + sh));
+  if (peakBG <= BASE_GROWTH_CAP) return [Infinity, Infinity];
+
+  const target = BASE_GROWTH_CAP * 400; // 2000
+
+  if (h < 1e-12) {
+    // Linear case: BG monotonically approaches c/400, one crossing
+    return [target * c / (c - target), Infinity];
+  }
+
+  // Quadratic: h*x^2 - (c + target*(h-1))*x + target*c = 0
+  const A = h;
+  const B = -(c + target * (h - 1));
+  const C = target * c;
+  const D = B * B - 4 * A * C;
+  if (D < 0) return [Infinity, Infinity];
+
+  const sqrtD = Math.sqrt(D);
+  return [
+    Math.max(0, (-B - sqrtD) / (2 * A)),
+    Math.max(0, (-B + sqrtD) / (2 * A))
+  ];
 }
 
 function deleteRow(id) {
@@ -224,6 +257,9 @@ function renderTable() {
       <td data-col="assembledPop"><input type="number" value="${row.assembledPop}" min="0" step="1" class="no-spin"
         oninput="updateRow(${row.id}, 'assembledPop', this.value)"
         onkeydown="if(event.key==='ArrowUp'){event.preventDefault();this.value=+this.value+100;updateRow(${row.id},'assembledPop',this.value)}if(event.key==='ArrowDown'){event.preventDefault();this.value=Math.max(0,+this.value-100);updateRow(${row.id},'assembledPop',this.value)}"></td>
+      <td data-col="popMin"><input type="number" value="${row.popMin || ''}" min="0" step="1" class="no-spin" placeholder=""
+        oninput="updateRow(${row.id}, 'popMin', this.value)"
+        onkeydown="if(event.key==='ArrowUp'){event.preventDefault();this.value=+this.value+100;updateRow(${row.id},'popMin',this.value)}if(event.key==='ArrowDown'){event.preventDefault();this.value=Math.max(0,+this.value-100);updateRow(${row.id},'popMin',this.value)}"></td>
       <td data-col="growthMod"><input type="number" value="${row.growthMod}" step="any"
         oninput="updateRow(${row.id}, 'growthMod', this.value)"> %</td>
       <td class="computed" data-col="effM" id="effM-${row.id}">${(effectiveM(row)*100).toFixed(1)}%</td>
@@ -248,6 +284,7 @@ function renderTable() {
     <td data-col="c" id="tot-c">—</td>
     <td data-col="pop" id="tot-pop">—</td>
     <td data-col="assembledPop" id="tot-assembledPop">—</td>
+    <td data-col="popMin" id="tot-popMin">—</td>
     <td data-col="growthMod"></td>
     <td data-col="effM"></td>
     <td data-col="housingMod"></td>
@@ -294,7 +331,7 @@ function saveState() {
     empireHousing: parseFloat(document.getElementById('empireHousing').value) || 0,
     assembledHousingMod: parseFloat(document.getElementById('assembledHousingMod').value) || 0,
     collapsedCols: [...collapsedCols],
-    planets: rows.map(r => ({ name: r.name, c: r.c, growthMod: r.growthMod, housingMod: r.housingMod, pop: r.pop, assembledPop: r.assembledPop }))
+    planets: rows.map(r => ({ name: r.name, c: r.c, growthMod: r.growthMod, housingMod: r.housingMod, pop: r.pop, assembledPop: r.assembledPop, popMin: r.popMin }))
   };
   try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch(e) { /* storage full or blocked */ }
 }
@@ -312,7 +349,7 @@ function loadState() {
     rows = [];
     rowId = 0;
     for (const p of data.planets) {
-      rows.push({ id: rowId++, name: p.name || '', c: p.c || 0, growthMod: p.growthMod || 0, housingMod: p.housingMod || 0, pop: p.pop || 0, assembledPop: p.assembledPop || 0 });
+      rows.push({ id: rowId++, name: p.name || '', c: p.c || 0, growthMod: p.growthMod || 0, housingMod: p.housingMod || 0, pop: p.pop || 0, assembledPop: p.assembledPop || 0, popMin: p.popMin || 0 });
     }
   }
   return true;
@@ -334,7 +371,7 @@ function toggleTheme() {
   document.getElementById('themeToggle').textContent = isLight ? '⏾ Dark Mode' : '☀ Light Mode';
 }
 
-const VERSION = '0.3.0';
+const VERSION = '0.4.0';
 console.log(`Population Optimizer v${VERSION} initializing`);
 
 function doExport() {
@@ -344,7 +381,7 @@ function doExport() {
     empireHousing: parseFloat(document.getElementById('empireHousing').value) || 0,
     assembledHousingMod: parseFloat(document.getElementById('assembledHousingMod').value) || 0,
     collapsedCols: [...collapsedCols],
-    planets: rows.map(r => ({ name: r.name, c: r.c, growthMod: r.growthMod, housingMod: r.housingMod, pop: r.pop, assembledPop: r.assembledPop }))
+    planets: rows.map(r => ({ name: r.name, c: r.c, growthMod: r.growthMod, housingMod: r.housingMod, pop: r.pop, assembledPop: r.assembledPop, popMin: r.popMin }))
   };
   const box = document.getElementById('exportBox');
   document.getElementById('exportText').value = JSON.stringify(data, null, 2);
@@ -379,7 +416,7 @@ function doImport() {
     rows = [];
     rowId = 0;
     for (const p of data.planets) {
-      rows.push({ id: rowId++, name: p.name || '', c: p.c || 0, growthMod: p.growthMod || 0, housingMod: p.housingMod || 0, pop: p.pop || 0, assembledPop: p.assembledPop || 0 });
+      rows.push({ id: rowId++, name: p.name || '', c: p.c || 0, growthMod: p.growthMod || 0, housingMod: p.housingMod || 0, pop: p.pop || 0, assembledPop: p.assembledPop || 0, popMin: p.popMin || 0 });
     }
   }
   if (data.totalPop !== undefined) document.getElementById('totalPop').value = data.totalPop;
@@ -511,10 +548,12 @@ function xForLambda(c, m, h, lambda) {
 }
 
 function solve() {
-  // Cache effective modifiers (avoids repeated DOM reads of empire inputs)
-  const planets = rows.map(row => ({
-    row, c: effectiveC(row), m: effectiveM(row), h: effectiveH(row)
-  }));
+  // Cache effective modifiers and compute cap thresholds
+  const planets = rows.map(row => {
+    const c = effectiveC(row), m = effectiveM(row), h = effectiveH(row);
+    const [xCapLow, xCapHigh] = computeXCap(c, h);
+    return { row, c, m, h, xMin: row.popMin || 0, xCapLow, xCapHigh };
+  });
 
   // Refresh computed cells and current growth
   for (const { row, c, m, h } of planets) {
@@ -526,12 +565,21 @@ function solve() {
     const bgEl = document.getElementById(`curBG-${row.id}`);
     const mgEl = document.getElementById(`curMG-${row.id}`);
     if (bgEl) bgEl.textContent = bg.toFixed(4);
-    if (mgEl) mgEl.textContent = (bg * m).toFixed(4);
+    if (mgEl) mgEl.textContent = (Math.min(BASE_GROWTH_CAP, bg) * m).toFixed(4);
   }
 
   const p = parseFloat(document.getElementById('totalPop').value);
   if (rows.length === 0) { setStatus('Add planets to begin', false); clearOutputs(); updateTotals(planets); return; }
   if (isNaN(p) || p < 0) { setStatus('Invalid total population', true); clearOutputs(); updateTotals(planets); return; }
+
+  // Check population minimum constraint
+  const totalMin = planets.reduce((s, pl) => s + pl.xMin, 0);
+  if (totalMin > p) {
+    setStatus(`Population minimums total (${totalMin}) exceeds total population (${p})`, true);
+    clearOutputs();
+    updateTotals(planets);
+    return;
+  }
 
   // Handle p=0 trivially
   if (p === 0) {
@@ -544,54 +592,126 @@ function solve() {
     return;
   }
 
-  // Helper: evaluate f(lambda) = sum(x_i(lambda)) - p
-  function evalF(lam) {
-    let total = 0;
-    for (const { c, m, h } of planets) total += xForLambda(c, m, h, lam);
-    return total - p;
+  // Clamped allocation: respect both growth cap and population minimum.
+  // At the cap threshold, marginal growth drops to 0, so more pop is wasted.
+  // Clamping at xCapLow ensures excess goes to planets that can still benefit.
+  function clampedX(pl, lam) {
+    let x = xForLambda(pl.c, pl.m, pl.h, lam);
+    if (pl.xCapLow < Infinity) x = Math.min(x, pl.xCapLow);
+    return Math.max(x, pl.xMin);
   }
 
-  // Find valid bracket [lo, hi] where f(lo) > 0 and f(hi) < 0
-  let bisectLo = 0, bisectHi = 0.0001;
-  for (let i = 0; i < 200; i++) {
-    if (evalF(bisectHi) < 0) break;
-    bisectHi *= 2;
-  }
-  if (evalF(bisectLo) <= 0) {
-    bisectLo = -0.0001;
-    for (let i = 0; i < 200; i++) {
-      if (evalF(bisectLo) > 0) break;
-      bisectLo *= 2;
-    }
+  function totalClamped(lam) {
+    let s = 0;
+    for (const pl of planets) s += clampedX(pl, lam);
+    return s;
   }
 
-  // Newton's method with bisection fallback
-  let lambda = (bisectLo + bisectHi) / 2;
-  for (let iter = 0; iter < 100; iter++) {
-    let f = -p, df = 0;
-    for (const { c, m, h } of planets) {
-      const x = xForLambda(c, m, h, lambda);
-      f += x;
-      const d2 = d2Gdx2(x, c, m, h);
-      if (d2 !== 0 && isFinite(d2)) df += 1 / d2;
-    }
-    if (Math.abs(f) < 0.001) break;
+  // At lambda=0 each uncapped planet is at its peak and each capped planet
+  // is at xCapLow (the minimum pop needed to hit BG=5). This is the maximum
+  // "productively usable" population.
+  const totalAtZero = totalClamped(0);
+  let allocations, lambda;
 
-    if (f > 0) bisectLo = lambda; else bisectHi = lambda;
+  if (totalAtZero >= p) {
+    // ---- Normal case: bisection finds lambda >= 0 ----
+    let lo = 0, hi = 0.0001;
+    for (let i = 0; i < 200; i++) { if (totalClamped(hi) <= p) break; hi *= 2; }
 
-    let lambdaNew = (df !== 0 && isFinite(df)) ? lambda - f / df : (bisectLo + bisectHi) / 2;
-    if (lambdaNew <= bisectLo || lambdaNew >= bisectHi) {
-      lambdaNew = (bisectLo + bisectHi) / 2;
+    // Newton + bisection hybrid
+    lambda = (lo + hi) / 2;
+    for (let iter = 0; iter < 100; iter++) {
+      let f = -p, df = 0;
+      for (const pl of planets) {
+        const xFree = xForLambda(pl.c, pl.m, pl.h, lambda);
+        const atCap = pl.xCapLow < Infinity && xFree > pl.xCapLow;
+        const xCapped = atCap ? pl.xCapLow : xFree;
+        const x = Math.max(xCapped, pl.xMin);
+        f += x;
+        // Only free (unclamped) planets contribute to the derivative
+        if (x > pl.xMin + 1e-6 && (pl.xCapLow === Infinity || x < pl.xCapLow - 1e-6)) {
+          const d2 = d2Gdx2(x, pl.c, pl.m, pl.h);
+          if (d2 !== 0 && isFinite(d2)) df += 1 / d2;
+        }
+      }
+      if (Math.abs(f) < 0.001) break;
+      if (f > 0) lo = lambda; else hi = lambda;
+      let next = (df !== 0 && isFinite(df)) ? lambda - f / df : (lo + hi) / 2;
+      if (next <= lo || next >= hi) next = (lo + hi) / 2;
+      lambda = next;
     }
-    lambda = lambdaNew;
+    allocations = planets.map(pl => clampedX(pl, lambda));
+
+  } else {
+    // ---- Excess case: more pop than can productively raise growth ----
+    // Allocate optimally first (each planet at peak or cap threshold),
+    // then park the surplus on capped planets where BG stays at 5.0.
+    lambda = 0;
+    allocations = planets.map(pl => clampedX(pl, 0));
+    let excess = p - allocations.reduce((s, x) => s + x, 0);
+
+    // Park excess on capped planets (BG stays >= 5.0 in [xCapLow, xCapHigh])
+    for (let i = 0; i < planets.length && excess > 0.001; i++) {
+      const pl = planets[i];
+      if (pl.xCapLow < Infinity) {
+        const room = pl.xCapHigh - allocations[i];
+        if (room > 0) {
+          const absorb = Math.min(excess, room);
+          allocations[i] += absorb;
+          excess -= absorb;
+        }
+      }
+    }
+
+    // If still excess (very rare — all cap ranges full), distribute to
+    // remaining planets via uncapped bisection with negative lambda.
+    if (excess > 0.001) {
+      // Identify which planets are fully parked (at xCapHigh) vs remaining
+      const fixed = [];
+      const remaining = [];
+      for (let i = 0; i < planets.length; i++) {
+        const pl = planets[i];
+        if (pl.xCapLow < Infinity && allocations[i] >= pl.xCapHigh - 0.001) {
+          fixed.push(i);
+        } else {
+          remaining.push(i);
+        }
+      }
+      if (remaining.length > 0) {
+        const fixedSum = fixed.reduce((s, i) => s + allocations[i], 0);
+        const remBudget = p - fixedSum;
+        function totalRem(lam) {
+          let s = 0;
+          for (const i of remaining) {
+            const pl = planets[i];
+            s += Math.max(xForLambda(pl.c, pl.m, pl.h, lam), pl.xMin);
+          }
+          return s;
+        }
+        let rLo = -0.0001, rHi = 0;
+        for (let i = 0; i < 200; i++) { if (totalRem(rLo) >= remBudget) break; rLo *= 2; }
+        let rLam = (rLo + rHi) / 2;
+        for (let iter = 0; iter < 100; iter++) {
+          const s = totalRem(rLam);
+          if (Math.abs(s - remBudget) < 0.001) break;
+          if (s > remBudget) rHi = rLam; else rLo = rLam;
+          rLam = (rLo + rHi) / 2;
+        }
+        for (const i of remaining) {
+          const pl = planets[i];
+          allocations[i] = Math.max(xForLambda(pl.c, pl.m, pl.h, rLam), pl.xMin);
+        }
+      }
+    }
   }
 
   let total = 0;
   const results = [];
-  for (const { row, c, m, h } of planets) {
-    const x = xForLambda(c, m, h, lambda);
-    setOutputCells(row.id, x, c, m, h);
-    results.push({ x, c, m, h });
+  for (let i = 0; i < planets.length; i++) {
+    const pl = planets[i];
+    const x = allocations[i];
+    setOutputCells(pl.row.id, x, pl.c, pl.m, pl.h);
+    results.push({ x, c: pl.c, m: pl.m, h: pl.h });
     total += x;
   }
 
@@ -612,7 +732,7 @@ function setOutputCells(id, x, c, m, h) {
   if (optEl) optEl.textContent = x.toFixed(2);
   const bg = baseGrowth(x, c, h);
   if (optBGEl) optBGEl.textContent = bg.toFixed(4);
-  if (optMGEl) optMGEl.textContent = (bg * m).toFixed(4);
+  if (optMGEl) optMGEl.textContent = (Math.min(BASE_GROWTH_CAP, bg) * m).toFixed(4);
 }
 
 function updateTotals(planets, optimalResults) {
@@ -620,12 +740,13 @@ function updateTotals(planets, optimalResults) {
   set('tot-c',           planets.reduce((s, { row }) => s + row.c, 0).toFixed(0));
   set('tot-pop',         planets.reduce((s, { row }) => s + row.pop, 0).toFixed(0));
   set('tot-assembledPop', planets.reduce((s, { row }) => s + row.assembledPop, 0).toFixed(0));
+  set('tot-popMin',      planets.reduce((s, { row }) => s + (row.popMin || 0), 0) || '');
 
   let curBG = 0, curMG = 0;
   for (const { row, c, m, h } of planets) {
     const bg = baseGrowth(row.pop, c, h);
     curBG += bg;
-    curMG += bg * m;
+    curMG += Math.min(BASE_GROWTH_CAP, bg) * m;
   }
   set('tot-curBG', curBG.toFixed(4));
   set('tot-curMG', curMG.toFixed(4));
@@ -636,7 +757,7 @@ function updateTotals(planets, optimalResults) {
       optPop += x;
       const bg = baseGrowth(x, c, h);
       optBG += bg;
-      optMG += bg * m;
+      optMG += Math.min(BASE_GROWTH_CAP, bg) * m;
     }
     set('tot-opt',   optPop.toFixed(2));
     set('tot-optBG', optBG.toFixed(4));
@@ -672,9 +793,9 @@ buildColToggles();
 if (!loadState()) {
   // Default seed for first-time visitors
   rows = [
-    { id: 0, name: 'Planet 1', c: 6000, growthMod: 0, housingMod: 0, pop: 3000, assembledPop: 0 },
-    { id: 1, name: 'Planet 2', c: 6000, growthMod: 0, housingMod: 0, pop: 3000, assembledPop: 0 },
-    { id: 2, name: 'Planet 3', c: 6000, growthMod: 0, housingMod: 0, pop: 3000, assembledPop: 0 },
+    { id: 0, name: 'Planet 1', c: 6000, growthMod: 0, housingMod: 0, pop: 3000, assembledPop: 0, popMin: 0 },
+    { id: 1, name: 'Planet 2', c: 6000, growthMod: 0, housingMod: 0, pop: 3000, assembledPop: 0, popMin: 0 },
+    { id: 2, name: 'Planet 3', c: 6000, growthMod: 0, housingMod: 0, pop: 3000, assembledPop: 0, popMin: 0 },
   ];
   rowId = 3;
   document.getElementById('totalPop').value = 9000;
