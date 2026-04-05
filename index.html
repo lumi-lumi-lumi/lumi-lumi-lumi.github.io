@@ -75,6 +75,7 @@
   .col-toggle-bar .label { font-size: 12px; color: var(--text-dim); margin-right: 2px; }
   .col-toggle-bar button { margin-top: 0; padding: 2px 7px; font-size: 11px; }
   .col-toggle-bar button.col-collapsed { background: var(--tog-collapsed-bg); color: var(--tog-collapsed-fg); border-color: var(--tog-collapsed-fg); text-decoration: line-through; }
+  .bg-uncapped { font-size: 0.85em; color: var(--text-dim); }
 </style>
 </head>
 <body>
@@ -193,6 +194,13 @@ function baseGrowth(x, c, h) {
 }
 
 const BASE_GROWTH_CAP = 5.0;
+
+function formatBG(bg) {
+  if (bg > BASE_GROWTH_CAP) {
+    return `${BASE_GROWTH_CAP.toFixed(4)}<br><span class="bg-uncapped">(${bg.toFixed(4)})</span>`;
+  }
+  return bg.toFixed(4);
+}
 
 // Find the population thresholds where baseGrowth = BASE_GROWTH_CAP.
 // Returns [xCapLow, xCapHigh]. BG >= 5 for x in [xCapLow, xCapHigh].
@@ -564,7 +572,7 @@ function solve() {
     const bg = baseGrowth(row.pop, c, h);
     const bgEl = document.getElementById(`curBG-${row.id}`);
     const mgEl = document.getElementById(`curMG-${row.id}`);
-    if (bgEl) bgEl.textContent = bg.toFixed(4);
+    if (bgEl) bgEl.innerHTML = formatBG(bg);
     if (mgEl) mgEl.textContent = (Math.min(BASE_GROWTH_CAP, bg) * m).toFixed(4);
   }
 
@@ -731,36 +739,47 @@ function setOutputCells(id, x, c, m, h) {
   const optMGEl = document.getElementById(`optMG-${id}`);
   if (optEl) optEl.textContent = x.toFixed(2);
   const bg = baseGrowth(x, c, h);
-  if (optBGEl) optBGEl.textContent = bg.toFixed(4);
+  if (optBGEl) optBGEl.innerHTML = formatBG(bg);
   if (optMGEl) optMGEl.textContent = (Math.min(BASE_GROWTH_CAP, bg) * m).toFixed(4);
 }
 
 function updateTotals(planets, optimalResults) {
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  const setHTML = (id, val) => { const el = document.getElementById(id); if (el) el.innerHTML = val; };
   set('tot-c',           planets.reduce((s, { row }) => s + row.c, 0).toFixed(0));
   set('tot-pop',         planets.reduce((s, { row }) => s + row.pop, 0).toFixed(0));
   set('tot-assembledPop', planets.reduce((s, { row }) => s + row.assembledPop, 0).toFixed(0));
   set('tot-popMin',      planets.reduce((s, { row }) => s + (row.popMin || 0), 0) || '');
 
-  let curBG = 0, curMG = 0;
+  let curBGRaw = 0, curBGCapped = 0, curMG = 0;
   for (const { row, c, m, h } of planets) {
     const bg = baseGrowth(row.pop, c, h);
-    curBG += bg;
+    curBGRaw += bg;
+    curBGCapped += Math.min(BASE_GROWTH_CAP, bg);
     curMG += Math.min(BASE_GROWTH_CAP, bg) * m;
   }
-  set('tot-curBG', curBG.toFixed(4));
+  if (curBGRaw > curBGCapped + 0.0001) {
+    setHTML('tot-curBG', `${curBGCapped.toFixed(4)}<br><span class="bg-uncapped">(${curBGRaw.toFixed(4)})</span>`);
+  } else {
+    set('tot-curBG', curBGCapped.toFixed(4));
+  }
   set('tot-curMG', curMG.toFixed(4));
 
   if (optimalResults) {
-    let optPop = 0, optBG = 0, optMG = 0;
+    let optPop = 0, optBGRaw = 0, optBGCapped = 0, optMG = 0;
     for (const { x, c, m, h } of optimalResults) {
       optPop += x;
       const bg = baseGrowth(x, c, h);
-      optBG += bg;
+      optBGRaw += bg;
+      optBGCapped += Math.min(BASE_GROWTH_CAP, bg);
       optMG += Math.min(BASE_GROWTH_CAP, bg) * m;
     }
-    set('tot-opt',   optPop.toFixed(2));
-    set('tot-optBG', optBG.toFixed(4));
+    set('tot-opt', optPop.toFixed(2));
+    if (optBGRaw > optBGCapped + 0.0001) {
+      setHTML('tot-optBG', `${optBGCapped.toFixed(4)}<br><span class="bg-uncapped">(${optBGRaw.toFixed(4)})</span>`);
+    } else {
+      set('tot-optBG', optBGCapped.toFixed(4));
+    }
     set('tot-optMG', optMG.toFixed(4));
   } else {
     set('tot-opt',   '—');
