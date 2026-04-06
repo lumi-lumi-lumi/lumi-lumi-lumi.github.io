@@ -123,6 +123,7 @@
       <th data-col="curBG">Current Base Growth</th>
       <th data-col="curMG">Current Modified Growth</th>
       <th data-col="opt">Optimal Population</th>
+      <th data-col="optDelta">Difference</th>
       <th data-col="optBG">Optimal Base Growth</th>
       <th data-col="optMG">Optimal Modified Growth</th>
       <th></th>
@@ -160,6 +161,7 @@ const COLS = [
   { key: 'curBG',        label: 'Cur. Base Growth' },
   { key: 'curMG',        label: 'Cur. Mod. Growth' },
   { key: 'opt',          label: 'Optimal Pop' },
+  { key: 'optDelta',     label: 'Difference' },
   { key: 'optBG',        label: 'Opt. Base Growth' },
   { key: 'optMG',        label: 'Opt. Mod. Growth' },
 ];
@@ -200,6 +202,14 @@ function formatBG(bg) {
     return `${BASE_GROWTH_CAP.toFixed(4)}<br><span class="bg-uncapped">(${bg.toFixed(4)})</span>`;
   }
   return bg.toFixed(4);
+}
+
+// Color intensity for the delta column: green = needs more pops, red = needs fewer
+function deltaColor(delta, maxAbsDelta) {
+  if (maxAbsDelta < 1) return 'transparent';
+  const t = Math.min(1, Math.abs(delta) / maxAbsDelta);
+  const alpha = (t * 0.6).toFixed(3);
+  return delta > 0 ? `rgba(100,200,100,${alpha})` : `rgba(200,80,80,${alpha})`;
 }
 
 // Find the population thresholds where baseGrowth = BASE_GROWTH_CAP.
@@ -277,6 +287,7 @@ function renderTable() {
       <td class="computed" data-col="curBG" id="curBG-${row.id}">—</td>
       <td class="computed" data-col="curMG" id="curMG-${row.id}">—</td>
       <td class="output" data-col="opt" id="opt-${row.id}">—</td>
+      <td data-col="optDelta" id="optDelta-${row.id}" style="font-weight:bold; text-align:center">—</td>
       <td class="computed" data-col="optBG" id="optBG-${row.id}">—</td>
       <td class="computed" data-col="optMG" id="optMG-${row.id}">—</td>
       <td><button onclick="deleteRow(${row.id})">×</button></td>
@@ -300,6 +311,7 @@ function renderTable() {
     <td data-col="curBG" id="tot-curBG">—</td>
     <td data-col="curMG" id="tot-curMG">—</td>
     <td data-col="opt" id="tot-opt">—</td>
+    <td data-col="optDelta"></td>
     <td data-col="optBG" id="tot-optBG">—</td>
     <td data-col="optMG" id="tot-optMG">—</td>
     <td></td>
@@ -715,12 +727,25 @@ function solve() {
 
   let total = 0;
   const results = [];
+  const deltas = [];
   for (let i = 0; i < planets.length; i++) {
     const pl = planets[i];
     const x = allocations[i];
     setOutputCells(pl.row.id, x, pl.c, pl.m, pl.h);
     results.push({ x, c: pl.c, m: pl.m, h: pl.h });
+    deltas.push({ id: pl.row.id, delta: x - pl.row.pop });
     total += x;
+  }
+
+  // Render delta column with intensity scaled to the largest absolute delta
+  const maxAbsDelta = deltas.reduce((m, d) => Math.max(m, Math.abs(d.delta)), 0);
+  for (const { id, delta } of deltas) {
+    const el = document.getElementById(`optDelta-${id}`);
+    if (el) {
+      const sign = delta > 0.5 ? '+' : '';
+      el.textContent = Math.abs(delta) < 0.5 ? '0' : sign + Math.round(delta);
+      el.style.background = deltaColor(delta, maxAbsDelta);
+    }
   }
 
   const err = Math.abs(total - p);
@@ -794,6 +819,8 @@ function clearOutputs() {
       const el = document.getElementById(`${prefix}-${row.id}`);
       if (el) el.textContent = '—';
     }
+    const dEl = document.getElementById(`optDelta-${row.id}`);
+    if (dEl) { dEl.textContent = '—'; dEl.style.background = 'transparent'; }
   }
 }
 
