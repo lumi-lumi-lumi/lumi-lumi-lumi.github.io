@@ -1,1 +1,957 @@
-TODO
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Population Optimizer</title>
+<style>
+  :root {
+    --bg: #1a1a1a;
+    --surface: #242424;
+    --border: #444;
+    --text: #e0e0e0;
+    --text-dim: #888;
+    --th-bg: #2e2e2e;
+    --computed-bg: #222;
+    --computed-fg: #999;
+    --output-bg: #1a2e1a;
+    --output-fg: #7ec87e;
+    --status-bg: #1a2e1a;
+    --status-border: #4a7a4a;
+    --status-fg: #7ec87e;
+    --error-bg: #2e1a1a;
+    --error-border: #7a4a4a;
+    --error-fg: #e08080;
+    --input-border: #555;
+    --btn-bg: #333;
+    --btn-border: #555;
+    --btn-fg: #ccc;
+    --tog-collapsed-bg: #1a1a1a;
+    --tog-collapsed-fg: #555;
+  }
+  body.light {
+    --bg: #ffffff;
+    --surface: #f5f5f5;
+    --border: #ccc;
+    --text: #111;
+    --text-dim: #666;
+    --th-bg: #f0f0f0;
+    --computed-bg: #f9f9f9;
+    --computed-fg: #555;
+    --output-bg: #e8f5e9;
+    --output-fg: #2a7a2a;
+    --status-bg: #e8f5e9;
+    --status-border: #aaa;
+    --status-fg: #333;
+    --error-bg: #fdecea;
+    --error-border: #aaa;
+    --error-fg: #c00;
+    --input-border: #ccc;
+    --btn-bg: #fff;
+    --btn-border: #ccc;
+    --btn-fg: #333;
+    --tog-collapsed-bg: #eee;
+    --tog-collapsed-fg: #aaa;
+  }
+  body { font-family: monospace; padding: 20px; background: var(--bg); color: var(--text); }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
+  th { background: var(--th-bg); }
+  td.computed { background: var(--computed-bg); color: var(--computed-fg); }
+  td.output { background: var(--output-bg); color: var(--output-fg); font-weight: bold; }
+  input[type=number], input[type=text] { width: 100%; box-sizing: border-box; border: none; background: transparent; font-family: monospace; color: var(--text); }
+  .config { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+  .config label { display: block; font-size: 12px; margin-bottom: 4px; color: var(--text-dim); }
+  .config input { border: 1px solid var(--input-border); padding: 4px 6px; width: 100%; box-sizing: border-box; font-family: monospace; background: var(--surface); color: var(--text); }
+  .status { margin: 8px 0; padding: 6px 10px; background: var(--status-bg); border: 1px solid var(--status-border); color: var(--status-fg); font-size: 13px; }
+  .status.error { background: var(--error-bg); border-color: var(--error-border); color: var(--error-fg); }
+  button { margin-top: 10px; padding: 6px 14px; font-family: monospace; cursor: pointer; background: var(--btn-bg); border: 1px solid var(--btn-border); color: var(--btn-fg); }
+  button:hover { opacity: 0.8; }
+  textarea { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+  .no-spin::-webkit-outer-spin-button,
+  .no-spin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .no-spin[type=number] { -moz-appearance: textfield; }
+  tr.totals-row { background: var(--th-bg); color: var(--text); font-weight: bold; }
+  .col-toggle-bar { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; align-items: center; }
+  .col-toggle-bar .label { font-size: 12px; color: var(--text-dim); margin-right: 2px; }
+  .col-toggle-bar button { margin-top: 0; padding: 2px 7px; font-size: 11px; }
+  .col-toggle-bar button.col-collapsed { background: var(--tog-collapsed-bg); color: var(--tog-collapsed-fg); border-color: var(--tog-collapsed-fg); text-decoration: line-through; }
+  .bg-uncapped { font-size: 0.85em; color: var(--text-dim); }
+  td:first-child, th:first-child { min-width: 12ch; padding: 4px 5px; }
+  .lock-btn { margin-left: 4px; padding: 0 3px; font-size: 11px; border: none; background: transparent; cursor: pointer; vertical-align: middle; margin-top: 0; }
+  .lock-btn:hover { opacity: 0.7; }
+</style>
+</head>
+<body>
+
+<h2>Population Optimizer <button id="themeToggle" onclick="toggleTheme()">☀ Light Mode</button></h2>
+
+<div class="config">
+  <div>
+    <label>Total Population</label>
+    <input type="number" id="totalPop" value="9000" min="0" step="1" class="no-spin"
+    onkeydown="if(event.key==='ArrowUp'){event.preventDefault();this.value=+this.value+100;solve()}if(event.key==='ArrowDown'){event.preventDefault();this.value=Math.max(0,+this.value-100);solve()}">
+  </div>
+  <div>
+    <label>Empire Growth Modifier (%)</label>
+    <input type="number" id="empireGrowth" value="0" step="any">
+  </div>
+  <div>
+    <label>Empire Housing Usage Modifier (%)</label>
+    <input type="number" id="empireHousing" value="0" step="any">
+  </div>
+  <div>
+    <label>Assembled Pop Housing Usage Modifier (%)</label>
+    <input type="number" id="assembledHousingMod" value="0" step="any">
+  </div>
+</div>
+
+<div class="status" id="status">Ready</div>
+
+<div class="col-toggle-bar" id="colToggles">
+  <span class="label">Columns:</span>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th data-col="c">Planet Capacity</th>
+      <th data-col="pop">Organic Pops</th>
+      <th data-col="assembledPop">Assembled Pops</th>
+      <th data-col="popMin">Pop Minimum</th>
+      <th data-col="availJobs">Available Jobs</th>
+      <th data-col="totalJobs">Total Jobs</th>
+      <th data-col="growthMod">Planetary Growth Modifier (%)</th>
+      <th data-col="effM">Effective Growth Modifier (%)</th>
+      <th data-col="housingMod">Planetary Housing Usage Modifier (%)</th>
+      <th data-col="effH">Housing Usage per Pop</th>
+      <th data-col="curBG">Current Base Growth</th>
+      <th data-col="curMG">Current Modified Growth</th>
+      <th data-col="opt">Optimal Population</th>
+      <th data-col="optDelta">Difference</th>
+      <th data-col="optBG">Optimal Base Growth</th>
+      <th data-col="optMG">Optimal Modified Growth</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody id="tableBody"></tbody>
+</table>
+
+<button onclick="addRow()">+ Add Planet</button>
+<button onclick="debugSolve()">Debug (check console)</button>
+<button onclick="doExport()">Export</button>
+<button onclick="toggleImport()">Import</button>
+
+<div id="exportBox" style="display:none; margin-top:10px">
+  <textarea id="exportText" rows="6" style="width:100%; font-family:monospace; font-size:12px" readonly></textarea>
+</div>
+<div id="importBox" style="display:none; margin-top:10px">
+  <textarea id="importText" rows="6" style="width:100%; font-family:monospace; font-size:12px" placeholder="Paste exported JSON here..."></textarea>
+  <button onclick="doImport()" style="margin-top:4px">Load</button>
+</div>
+
+<script>
+let rows = [];
+let rowId = 0;
+
+const COLS = [
+  { key: 'c',            label: 'Planet Capacity' },
+  { key: 'pop',          label: 'Organic Pops' },
+  { key: 'assembledPop', label: 'Assembled Pops' },
+  { key: 'popMin',       label: 'Pop Minimum' },
+  { key: 'availJobs',       label: 'Available Jobs' },
+  { key: 'totalJobs',       label: 'Total Jobs' },
+  { key: 'growthMod',    label: 'Plan. Growth Mod' },
+  { key: 'effM',         label: 'Eff. Growth Mod' },
+  { key: 'housingMod',   label: 'Plan. Housing Mod' },
+  { key: 'effH',         label: 'Housing/Pop' },
+  { key: 'curBG',        label: 'Cur. Base Growth' },
+  { key: 'curMG',        label: 'Cur. Mod. Growth' },
+  { key: 'opt',          label: 'Optimal Pop' },
+  { key: 'optDelta',     label: 'Difference' },
+  { key: 'optBG',        label: 'Opt. Base Growth' },
+  { key: 'optMG',        label: 'Opt. Mod. Growth' },
+];
+let collapsedCols = new Set();
+
+function empireGrowth() { return parseFloat(document.getElementById('empireGrowth').value) || 0; }
+function empireHousing() { return parseFloat(document.getElementById('empireHousing').value) || 0; }
+function assembledHousingMod() { return parseFloat(document.getElementById('assembledHousingMod').value) || 0; }
+
+// m = 1 + (empireGrowth% + planetGrowth%) / 100
+function effectiveM(row) { return 1 + (empireGrowth() + row.growthMod) / 100; }
+// h = 1 + (empireHousing% + planetHousing%) / 100
+function effectiveH(row) { return 1 + (empireHousing() + row.housingMod) / 100; }
+// Assembled pops reduce effective planet capacity:
+//   effectiveC = c - assembledPop * (1 + assembledHousingMod/100)
+// e.g. c=10000, assembledPop=500, mod=-50% → 10000 - 500*(1-0.5) = 9750
+function effectiveC(row) {
+  return Math.max(1, row.c - row.assembledPop * (1 + assembledHousingMod() / 100));
+}
+
+function addRow() {
+  rows.push({ id: rowId++, name: '', c: 6000, growthMod: 0, housingMod: 0, pop: 0, assembledPop: 0, popMin: 0, availJobs: 0, totalJobsLocked: false });
+  renderTable();
+  solve();
+}
+
+// Base growth (m=1): x * (1 - x / (c + x*(1-h))) / 400
+function baseGrowth(x, c, h) {
+  const denom = c + x * (1 - h);
+  if (denom <= 0 || x <= 0) return 0;
+  return x * (1 - x / denom) / 400;
+}
+
+const BASE_GROWTH_CAP = 5.0;
+
+function formatBG(bg) {
+  if (bg > BASE_GROWTH_CAP) {
+    return `${BASE_GROWTH_CAP.toFixed(4)}<br><span class="bg-uncapped">(${bg.toFixed(4)})</span>`;
+  }
+  return bg.toFixed(4);
+}
+
+// Color intensity for the delta column: green = needs more pops, red = needs fewer
+function deltaColor(delta, maxAbsDelta) {
+  if (maxAbsDelta < 1) return 'transparent';
+  const t = Math.min(1, Math.abs(delta) / maxAbsDelta);
+  const alpha = (t * 0.6).toFixed(3);
+  return delta > 0 ? `rgba(100,200,100,${alpha})` : `rgba(200,80,80,${alpha})`;
+}
+
+// Find the population thresholds where baseGrowth = BASE_GROWTH_CAP.
+// Returns [xCapLow, xCapHigh]. BG >= 5 for x in [xCapLow, xCapHigh].
+// Returns [Infinity, Infinity] if peak BG < 5 (cap never reached).
+function computeXCap(c, h) {
+  const sh = Math.sqrt(Math.max(0, h));
+  const peakBG = h < 1e-12 ? c / 400 : c / (400 * (1 + sh) * (1 + sh));
+  if (peakBG <= BASE_GROWTH_CAP) return [Infinity, Infinity];
+
+  const target = BASE_GROWTH_CAP * 400; // 2000
+
+  if (h < 1e-12) {
+    // Linear case: BG monotonically approaches c/400, one crossing
+    return [target * c / (c - target), Infinity];
+  }
+
+  // Quadratic: h*x^2 - (c + target*(h-1))*x + target*c = 0
+  const A = h;
+  const B = -(c + target * (h - 1));
+  const C = target * c;
+  const D = B * B - 4 * A * C;
+  if (D < 0) return [Infinity, Infinity];
+
+  const sqrtD = Math.sqrt(D);
+  return [
+    Math.max(0, (-B - sqrtD) / (2 * A)),
+    Math.max(0, (-B + sqrtD) / (2 * A))
+  ];
+}
+
+function deleteRow(id) {
+  rows = rows.filter(r => r.id !== id);
+  renderTable();
+  solve();
+}
+
+// Evaluate a simple expression containing only numbers, +, and -
+function evalSimple(str) {
+  str = str.trim();
+  if (!str) return null;
+  if (!/^-?\d+(\.\d+)?(\s*[+-]\s*\d+(\.\d+)?)*$/.test(str)) return null;
+  return str.split(/(?=[+-])/).reduce((sum, part) => sum + parseFloat(part), 0);
+}
+
+// On focus: switch number inputs to text so expressions can be typed
+// On blur: evaluate and switch back
+document.addEventListener('focusin', e => {
+  const el = e.target;
+  if (el.tagName === 'INPUT' && el.type === 'number') {
+    el.dataset.wasNumber = '1';
+    el.type = 'text';
+  }
+});
+document.addEventListener('focusout', e => {
+  const el = e.target;
+  if (el.tagName === 'INPUT' && el.dataset.wasNumber) {
+    const raw = el.value;
+    const result = evalSimple(raw);
+    if (result !== null) el.value = result;
+    el.type = 'number';
+    delete el.dataset.wasNumber;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+});
+
+function toggleTotalJobsLock(id) {
+  const row = rows.find(r => r.id === id);
+  if (!row) return;
+  row.totalJobsLocked = !row.totalJobsLocked;
+  if (row.totalJobsLocked) {
+    row.lockedTotalJobs = row.pop + row.assembledPop + (row.availJobs || 0);
+  }
+  renderTable();
+  solve();
+}
+
+function updateRow(id, field, value) {
+  const row = rows.find(r => r.id === id);
+  if (!row) return;
+  row[field] = field === 'name' ? value : (parseFloat(value) || 0);
+  if (field === 'pop') {
+    const total = rows.reduce((sum, r) => sum + r.pop, 0);
+    document.getElementById('totalPop').value = total;
+  }
+  // When total jobs is locked, adjust available jobs to maintain the locked total
+  if (row.totalJobsLocked && (field === 'pop' || field === 'assembledPop')) {
+    row.availJobs = row.lockedTotalJobs - row.pop - row.assembledPop;
+    const ajEl = document.getElementById(`availJobs-${id}`);
+    if (ajEl) ajEl.value = row.availJobs;
+  }
+  solve();
+}
+
+function renderTable() {
+  const tbody = document.getElementById('tableBody');
+  tbody.innerHTML = '';
+  for (const row of rows) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="text" value="${row.name}" placeholder="Planet ${row.id + 1}"
+        oninput="updateRow(${row.id}, 'name', this.value)"></td>
+      <td data-col="c"><input type="number" value="${row.c}" min="0" step="1" class="no-spin"
+        oninput="updateRow(${row.id}, 'c', this.value)"
+        onkeydown="if(event.key==='ArrowUp'){event.preventDefault();this.value=+this.value+100;updateRow(${row.id},'c',this.value)}if(event.key==='ArrowDown'){event.preventDefault();this.value=Math.max(0,+this.value-100);updateRow(${row.id},'c',this.value)}"></td>
+      <td data-col="pop"><input type="number" value="${row.pop}" min="0" step="1" class="no-spin"
+        oninput="updateRow(${row.id}, 'pop', this.value)"
+        onkeydown="if(event.key==='ArrowUp'){event.preventDefault();this.value=+this.value+100;updateRow(${row.id},'pop',this.value)}if(event.key==='ArrowDown'){event.preventDefault();this.value=Math.max(0,+this.value-100);updateRow(${row.id},'pop',this.value)}"></td>
+      <td data-col="assembledPop"><input type="number" value="${row.assembledPop}" min="0" step="1" class="no-spin"
+        oninput="updateRow(${row.id}, 'assembledPop', this.value)"
+        onkeydown="if(event.key==='ArrowUp'){event.preventDefault();this.value=+this.value+100;updateRow(${row.id},'assembledPop',this.value)}if(event.key==='ArrowDown'){event.preventDefault();this.value=Math.max(0,+this.value-100);updateRow(${row.id},'assembledPop',this.value)}"></td>
+      <td data-col="popMin"><input type="number" value="${row.popMin || ''}" min="0" step="1" class="no-spin" placeholder=""
+        oninput="updateRow(${row.id}, 'popMin', this.value)"
+        onkeydown="if(event.key==='ArrowUp'){event.preventDefault();this.value=+this.value+100;updateRow(${row.id},'popMin',this.value)}if(event.key==='ArrowDown'){event.preventDefault();this.value=Math.max(0,+this.value-100);updateRow(${row.id},'popMin',this.value)}"></td>
+      <td data-col="availJobs"><input id="availJobs-${row.id}" type="number" value="${row.availJobs || ''}" min="0" step="1" class="no-spin" placeholder=""
+        oninput="updateRow(${row.id}, 'availJobs', this.value)"
+        onkeydown="if(event.key==='ArrowUp'){event.preventDefault();this.value=+this.value+100;updateRow(${row.id},'availJobs',this.value)}if(event.key==='ArrowDown'){event.preventDefault();this.value=Math.max(0,+this.value-100);updateRow(${row.id},'availJobs',this.value)}"></td>
+      <td class="computed" data-col="totalJobs" id="totalJobs-${row.id}">${row.pop + row.assembledPop + (row.availJobs || 0)} <button class="lock-btn${row.totalJobsLocked ? ' locked' : ''}" onclick="toggleTotalJobsLock(${row.id})" title="Lock total jobs">${row.totalJobsLocked ? '\u{1F512}' : '\u{1F513}'}</button></td>
+      <td data-col="growthMod"><input type="number" value="${row.growthMod}" step="any"
+        oninput="updateRow(${row.id}, 'growthMod', this.value)"> %</td>
+      <td class="computed" data-col="effM" id="effM-${row.id}">${(effectiveM(row)*100).toFixed(1)}%</td>
+      <td data-col="housingMod"><input type="number" value="${row.housingMod}" step="any"
+        oninput="updateRow(${row.id}, 'housingMod', this.value)"> %</td>
+      <td class="computed" data-col="effH" id="effH-${row.id}">${effectiveH(row).toFixed(3)}</td>
+      <td class="computed" data-col="curBG" id="curBG-${row.id}">—</td>
+      <td class="computed" data-col="curMG" id="curMG-${row.id}">—</td>
+      <td class="output" data-col="opt" id="opt-${row.id}">—</td>
+      <td data-col="optDelta" id="optDelta-${row.id}" style="font-weight:bold; text-align:center">—</td>
+      <td class="computed" data-col="optBG" id="optBG-${row.id}">—</td>
+      <td class="computed" data-col="optMG" id="optMG-${row.id}">—</td>
+      <td><button onclick="deleteRow(${row.id})">×</button></td>
+    `;
+    tbody.appendChild(tr);
+  }
+  // totals row
+  const tfoot = document.createElement('tr');
+  tfoot.id = 'totalsRow';
+  tfoot.className = 'totals-row';
+  tfoot.innerHTML = `
+    <td>Total</td>
+    <td data-col="c" id="tot-c">—</td>
+    <td data-col="pop" id="tot-pop">—</td>
+    <td data-col="assembledPop" id="tot-assembledPop">—</td>
+    <td data-col="popMin" id="tot-popMin">—</td>
+    <td data-col="availJobs" id="tot-availJobs">—</td>
+    <td data-col="totalJobs" id="tot-totalJobs">—</td>
+    <td data-col="growthMod"></td>
+    <td data-col="effM"></td>
+    <td data-col="housingMod"></td>
+    <td data-col="effH"></td>
+    <td data-col="curBG" id="tot-curBG">—</td>
+    <td data-col="curMG" id="tot-curMG">—</td>
+    <td data-col="opt" id="tot-opt">—</td>
+    <td data-col="optDelta"></td>
+    <td data-col="optBG" id="tot-optBG">—</td>
+    <td data-col="optMG" id="tot-optMG">—</td>
+    <td></td>
+  `;
+  tbody.appendChild(tfoot);
+  applyColVisibility();
+}
+
+function buildColToggles() {
+  const bar = document.getElementById('colToggles');
+  // clear any previously built buttons (keep the label span)
+  const label = bar.querySelector('.label');
+  bar.innerHTML = '';
+  bar.appendChild(label);
+  for (const col of COLS) {
+    const btn = document.createElement('button');
+    btn.id = `tog-${col.key}`;
+    btn.textContent = col.label;
+    btn.onclick = () => toggleCol(col.key);
+    bar.appendChild(btn);
+  }
+}
+
+function toggleCol(key) {
+  if (collapsedCols.has(key)) collapsedCols.delete(key);
+  else collapsedCols.add(key);
+  applyColVisibility();
+  saveState();
+}
+
+const LS_KEY = 'stellaris-pop-optimizer';
+
+function saveState() {
+  const data = {
+    totalPop: parseFloat(document.getElementById('totalPop').value) || 0,
+    empireGrowth: parseFloat(document.getElementById('empireGrowth').value) || 0,
+    empireHousing: parseFloat(document.getElementById('empireHousing').value) || 0,
+    assembledHousingMod: parseFloat(document.getElementById('assembledHousingMod').value) || 0,
+    collapsedCols: [...collapsedCols],
+    planets: rows.map(r => ({ name: r.name, c: r.c, growthMod: r.growthMod, housingMod: r.housingMod, pop: r.pop, assembledPop: r.assembledPop, popMin: r.popMin, availJobs: r.availJobs, totalJobsLocked: r.totalJobsLocked || false, lockedTotalJobs: r.lockedTotalJobs || 0 }))
+  };
+  try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch(e) { /* storage full or blocked */ }
+}
+
+function loadState() {
+  let data;
+  try { data = JSON.parse(localStorage.getItem(LS_KEY)); } catch(e) { return false; }
+  if (!data) return false;
+  if (data.empireGrowth !== undefined) document.getElementById('empireGrowth').value = data.empireGrowth;
+  if (data.empireHousing !== undefined) document.getElementById('empireHousing').value = data.empireHousing;
+  if (data.assembledHousingMod !== undefined) document.getElementById('assembledHousingMod').value = data.assembledHousingMod;
+  if (data.totalPop !== undefined) document.getElementById('totalPop').value = data.totalPop;
+  if (Array.isArray(data.collapsedCols)) collapsedCols = new Set(data.collapsedCols);
+  if (Array.isArray(data.planets)) {
+    rows = [];
+    rowId = 0;
+    for (const p of data.planets) {
+      rows.push({ id: rowId++, name: p.name || '', c: p.c || 0, growthMod: p.growthMod || 0, housingMod: p.housingMod || 0, pop: p.pop || 0, assembledPop: p.assembledPop || 0, popMin: p.popMin || 0, availJobs: p.availJobs || 0, totalJobsLocked: p.totalJobsLocked || false, lockedTotalJobs: p.lockedTotalJobs || 0 });
+    }
+  }
+  return true;
+}
+
+function applyColVisibility() {
+  for (const col of COLS) {
+    const hidden = collapsedCols.has(col.key);
+    document.querySelectorAll(`[data-col="${col.key}"]`).forEach(el => {
+      el.style.display = hidden ? 'none' : '';
+    });
+    const btn = document.getElementById(`tog-${col.key}`);
+    if (btn) btn.classList.toggle('col-collapsed', hidden);
+  }
+}
+
+function toggleTheme() {
+  const isLight = document.body.classList.toggle('light');
+  document.getElementById('themeToggle').textContent = isLight ? '⏾ Dark Mode' : '☀ Light Mode';
+}
+
+const VERSION = '0.5.0';
+console.log(`Population Optimizer v${VERSION} initializing`);
+
+function doExport() {
+  const data = {
+    totalPop: parseFloat(document.getElementById('totalPop').value) || 0,
+    empireGrowth: parseFloat(document.getElementById('empireGrowth').value) || 0,
+    empireHousing: parseFloat(document.getElementById('empireHousing').value) || 0,
+    assembledHousingMod: parseFloat(document.getElementById('assembledHousingMod').value) || 0,
+    collapsedCols: [...collapsedCols],
+    planets: rows.map(r => ({ name: r.name, c: r.c, growthMod: r.growthMod, housingMod: r.housingMod, pop: r.pop, assembledPop: r.assembledPop, popMin: r.popMin, availJobs: r.availJobs, totalJobsLocked: r.totalJobsLocked || false, lockedTotalJobs: r.lockedTotalJobs || 0 }))
+  };
+  const box = document.getElementById('exportBox');
+  document.getElementById('exportText').value = JSON.stringify(data, null, 2);
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+}
+
+function toggleImport() {
+  const box = document.getElementById('importBox');
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+}
+
+function doImport() {
+  const text = document.getElementById('importText').value.trim();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch(e) {
+    alert('Invalid JSON: ' + e.message);
+    return;
+  }
+  if (data.empireGrowth !== undefined) document.getElementById('empireGrowth').value = data.empireGrowth;
+  if (data.empireHousing !== undefined) document.getElementById('empireHousing').value = data.empireHousing;
+  if (data.assembledHousingMod !== undefined) document.getElementById('assembledHousingMod').value = data.assembledHousingMod;
+  if (Array.isArray(data.collapsedCols)) {
+    collapsedCols = new Set(data.collapsedCols);
+    for (const col of COLS) {
+      const btn = document.getElementById(`tog-${col.key}`);
+      if (btn) btn.classList.toggle('col-collapsed', collapsedCols.has(col.key));
+    }
+  }
+  if (Array.isArray(data.planets)) {
+    rows = [];
+    rowId = 0;
+    for (const p of data.planets) {
+      rows.push({ id: rowId++, name: p.name || '', c: p.c || 0, growthMod: p.growthMod || 0, housingMod: p.housingMod || 0, pop: p.pop || 0, assembledPop: p.assembledPop || 0, popMin: p.popMin || 0, availJobs: p.availJobs || 0, totalJobsLocked: p.totalJobsLocked || false, lockedTotalJobs: p.lockedTotalJobs || 0 });
+    }
+  }
+  if (data.totalPop !== undefined) document.getElementById('totalPop').value = data.totalPop;
+  document.getElementById('importBox').style.display = 'none';
+  renderTable();
+  solve();
+}
+
+function debugSolve() {
+  const p = parseFloat(document.getElementById('totalPop').value);
+  console.log(`=== DEBUG SOLVE v${VERSION} ===`);
+  console.log(`Target population: ${p}`);
+  console.log(`Empire modifiers: growth=${empireGrowth()}%, housing=${empireHousing()}%, assembledHousing=${assembledHousingMod()}%`);
+  if (p === 0) { console.log('Target is 0 — trivial solution, all x_i = 0'); console.log('=== END DEBUG ==='); return; }
+  console.log('');
+
+  // Per-planet summary
+  console.log('--- Per-planet parameters ---');
+  for (const row of rows) {
+    const m = effectiveM(row), h = effectiveH(row), c = effectiveC(row);
+    const peak = unconstrainedPeak(c, h);
+    console.log(`  "${row.name || 'unnamed'}": c=${row.c}, effectiveC=${c}, assembledPop=${row.assembledPop}, pop=${row.pop}, m=${m.toFixed(4)}, h=${h.toFixed(4)}, unconstrained_peak=${peak.toFixed(2)}, current_dGdx=${dGdx(row.pop, c, m, h).toFixed(6)}`);
+  }
+  console.log(`  Sum of unconstrained peaks: ${rows.reduce((s,r) => s + unconstrainedPeak(effectiveC(r), effectiveH(r)), 0).toFixed(2)}`);
+  console.log('');
+
+  // Newton iteration trace
+  console.log('--- Newton+bisection iteration trace ---');
+  const planets = rows.map(row => ({ row, c: effectiveC(row), m: effectiveM(row), h: effectiveH(row) }));
+  function dbEvalF(lam) {
+    let total = 0;
+    for (const { c, m, h } of planets) total += xForLambda(c, m, h, lam);
+    return total - p;
+  }
+  let dbLo = 0, dbHi = 0.0001;
+  for (let i = 0; i < 200; i++) {
+    if (dbEvalF(dbHi) < 0) break;
+    dbHi *= 2;
+  }
+  if (dbEvalF(dbLo) <= 0) {
+    dbLo = -0.0001;
+    for (let i = 0; i < 200; i++) {
+      if (dbEvalF(dbLo) > 0) break;
+      dbLo *= 2;
+    }
+  }
+  console.log(`  Bracket: lo=${dbLo.toFixed(6)} (f=${dbEvalF(dbLo).toFixed(2)}), hi=${dbHi.toFixed(6)} (f=${dbEvalF(dbHi).toFixed(2)})`);
+  let lambda = (dbLo + dbHi) / 2;
+  for (let iter = 0; iter < 100; iter++) {
+    let f = -p, df = 0;
+    for (const { c, m, h } of planets) {
+      const x = xForLambda(c, m, h, lambda);
+      f += x;
+      const d2 = d2Gdx2(x, c, m, h);
+      if (d2 !== 0 && isFinite(d2)) df += 1 / d2;
+    }
+    if (Math.abs(f) < 0.001) { console.log(`  Converged at iter ${iter}`); break; }
+    if (f > 0) dbLo = lambda; else dbHi = lambda;
+    let lambdaNew = (df !== 0 && isFinite(df)) ? lambda - f / df : (dbLo + dbHi) / 2;
+    const usedBisect = lambdaNew <= dbLo || lambdaNew >= dbHi;
+    if (usedBisect) lambdaNew = (dbLo + dbHi) / 2;
+    console.log(`  iter ${iter}: lambda=${lambda.toFixed(6)}, f=${f.toFixed(4)}, f'=${df.toFixed(2)}, next=${lambdaNew.toFixed(6)} ${usedBisect ? '(bisect)' : '(newton)'}`);
+    lambda = lambdaNew;
+  }
+  console.log('');
+
+  // Final allocation and marginal growth check
+  console.log('--- Final allocation ---');
+  let total = 0;
+  for (const { row, c, m, h } of planets) {
+    const x = xForLambda(c, m, h, lambda);
+    const marginal = dGdx(x, c, m, h);
+    console.log(`  "${row.name || 'unnamed'}": optimal_x=${x.toFixed(2)}, dG/dx at optimal=${marginal.toFixed(6)}`);
+    total += x;
+  }
+  console.log(`  Total allocated: ${total.toFixed(2)} (target: ${p}, error: ${(total-p).toFixed(4)})`);
+  console.log(`  Final lambda: ${lambda.toFixed(6)}`);
+  console.log('=== END DEBUG ===');
+}
+
+// Unconstrained peak: closed form c / (sqrt(h) * (1 + sqrt(h)))
+function unconstrainedPeak(c, h) {
+  if (h <= 0) return c / 2; // degenerate fallback
+  const sh = Math.sqrt(h);
+  return c / (sh * (1 + sh));
+}
+
+// d²G/dx² = -(m/400) * 2c² / q³  where q = c + x*(1-h)
+function d2Gdx2(x, c, m, h) {
+  const q = c + x * (1 - h);
+  if (q <= 0) return -Infinity;
+  return -(m / 400) * 2 * c * c / (q * q * q);
+}
+
+// dG/dx at a given x (used by debugSolve)
+function dGdx(x, c, m, h) {
+  const q = c + x * (1 - h);
+  if (q <= 0) return -Infinity;
+  return (m / 400) * (1 - x * (2 * c + x * (1 - h)) / (q * q));
+}
+
+// Given lambda, solve dG/dx = lambda for x using the quadratic formula
+// Returns x >= 0, or 0 if no valid solution
+function xForLambda(c, m, h, lambda) {
+  const k = lambda * 400 / m;
+  const oh = 1 - h;
+  const a  = (1 - k) * oh * oh - oh;
+  const b  = (1 - k) * 2 * c * oh - 2 * c;
+  const c0 = (1 - k) * c * c;
+
+  if (Math.abs(a) < 1e-12) {
+    const x = Math.abs(b) < 1e-12 ? 0 : Math.max(0, -c0 / b);
+    const qLimit = h > 1 ? c / (h - 1) : Infinity;
+    return x < qLimit ? x : 0;
+  }
+  const disc = b * b - 4 * a * c0;
+  if (disc < 0) return 0;
+  const sq = Math.sqrt(disc);
+  const x1 = (-b + sq) / (2 * a);
+  const x2 = (-b - sq) / (2 * a);
+  // Filter: x >= 0 AND physically valid (q = c + x*(1-h) > 0)
+  const qLimit = h > 1 ? c / (h - 1) : Infinity;
+  const candidates = [x1, x2].filter(x => x >= -1e-9 && x < qLimit).map(x => Math.max(0, x));
+  if (candidates.length === 0) return 0;
+  if (candidates.length === 1) return candidates[0];
+  // pick the root on the concave (growth-increasing) side of the curve
+  const peak = unconstrainedPeak(c, h);
+  return candidates.reduce((best, x) => Math.abs(x - peak) < Math.abs(best - peak) ? x : best);
+}
+
+function solve() {
+  // Cache effective modifiers and compute cap thresholds
+  const planets = rows.map(row => {
+    const c = effectiveC(row), m = effectiveM(row), h = effectiveH(row);
+    const [xCapLow, xCapHigh] = computeXCap(c, h);
+    const xMax = (row.availJobs !== 0) ? row.pop + row.availJobs : 0;
+    return { row, c, m, h, xMin: row.popMin || 0, xMax, xCapLow, xCapHigh };
+  });
+
+  // Refresh computed cells and current growth
+  for (const { row, c, m, h } of planets) {
+    const em = document.getElementById(`effM-${row.id}`);
+    const eh = document.getElementById(`effH-${row.id}`);
+    if (em) em.textContent = (m * 100).toFixed(1) + '%';
+    if (eh) eh.textContent = h.toFixed(3);
+    const tj = document.getElementById(`totalJobs-${row.id}`);
+    if (tj) {
+      const locked = row.totalJobsLocked;
+      tj.innerHTML = `${row.pop + row.assembledPop + (row.availJobs || 0)} <button class="lock-btn${locked ? ' locked' : ''}" onclick="toggleTotalJobsLock(${row.id})" title="Lock total jobs">${locked ? '\u{1F512}' : '\u{1F513}'}</button>`;
+    }
+    const bg = baseGrowth(row.pop, c, h);
+    const bgEl = document.getElementById(`curBG-${row.id}`);
+    const mgEl = document.getElementById(`curMG-${row.id}`);
+    if (bgEl) bgEl.innerHTML = formatBG(bg);
+    if (mgEl) mgEl.textContent = (Math.min(BASE_GROWTH_CAP, bg) * m).toFixed(4);
+  }
+
+  const p = parseFloat(document.getElementById('totalPop').value);
+  if (rows.length === 0) { setStatus('Add planets to begin', false); clearOutputs(); updateTotals(planets); return; }
+  if (isNaN(p) || p < 0) { setStatus('Invalid total population', true); clearOutputs(); updateTotals(planets); return; }
+
+  // Check population minimum constraint
+  const totalMin = planets.reduce((s, pl) => s + pl.xMin, 0);
+  if (totalMin > p) {
+    setStatus(`Pop minimums total (${totalMin}) exceeds total population (${p})`, true);
+    clearOutputs();
+    updateTotals(planets);
+    return;
+  }
+
+  // Check that no planet has an impossible derived pop max
+  for (const pl of planets) {
+    if (pl.row.availJobs !== 0 && pl.xMax <= 0) {
+      setStatus(`"${pl.row.name || 'Planet'}" has derived pop max (${pl.row.pop} + ${pl.row.availJobs} = ${pl.xMax}) at or below 0`, true);
+      clearOutputs();
+      updateTotals(planets);
+      return;
+    }
+    if (pl.xMax > 0 && pl.xMax < pl.xMin) {
+      setStatus(`"${pl.row.name || 'Planet'}" has derived pop max (pops + jobs = ${pl.xMax}) below pop minimum (${pl.xMin})`, true);
+      clearOutputs();
+      updateTotals(planets);
+      return;
+    }
+  }
+
+  // Check that pop maximums can accommodate total population
+  const hasAnyMax = planets.some(pl => pl.xMax > 0);
+  if (hasAnyMax) {
+    const totalMax = planets.reduce((s, pl) => s + (pl.xMax > 0 ? pl.xMax : Infinity), 0);
+    if (isFinite(totalMax) && totalMax < p) {
+      setStatus(`Derived pop max total (${totalMax}) is less than total population (${p})`, true);
+      clearOutputs();
+      updateTotals(planets);
+      return;
+    }
+  }
+
+  // Handle p=0 trivially
+  if (p === 0) {
+    const results = planets.map(({ row, c, m, h }) => {
+      setOutputCells(row.id, 0, c, m, h);
+      return { x: 0, c, m, h };
+    });
+    setStatus('Optimal distribution found (λ = N/A)', false);
+    updateTotals(planets, results);
+    return;
+  }
+
+  // Clamped allocation: respect both growth cap and population minimum.
+  // At the cap threshold, marginal growth drops to 0, so more pop is wasted.
+  // Clamping at xCapLow ensures excess goes to planets that can still benefit.
+  function clampedX(pl, lam) {
+    let x = xForLambda(pl.c, pl.m, pl.h, lam);
+    if (pl.xCapLow < Infinity) x = Math.min(x, pl.xCapLow);
+    if (pl.xMax > 0) x = Math.min(x, pl.xMax);
+    return Math.max(x, pl.xMin);
+  }
+
+  function totalClamped(lam) {
+    let s = 0;
+    for (const pl of planets) s += clampedX(pl, lam);
+    return s;
+  }
+
+  // At lambda=0 each uncapped planet is at its peak and each capped planet
+  // is at xCapLow (the minimum pop needed to hit BG=5). This is the maximum
+  // "productively usable" population.
+  const totalAtZero = totalClamped(0);
+  let allocations, lambda;
+
+  if (totalAtZero >= p) {
+    // ---- Normal case: bisection finds lambda >= 0 ----
+    let lo = 0, hi = 0.0001;
+    for (let i = 0; i < 200; i++) { if (totalClamped(hi) <= p) break; hi *= 2; }
+
+    // Newton + bisection hybrid
+    lambda = (lo + hi) / 2;
+    for (let iter = 0; iter < 100; iter++) {
+      let f = -p, df = 0;
+      for (const pl of planets) {
+        const xFree = xForLambda(pl.c, pl.m, pl.h, lambda);
+        let xClamped = xFree;
+        if (pl.xCapLow < Infinity && xClamped > pl.xCapLow) xClamped = pl.xCapLow;
+        if (pl.xMax > 0 && xClamped > pl.xMax) xClamped = pl.xMax;
+        const x = Math.max(xClamped, pl.xMin);
+        f += x;
+        // Only free (unclamped) planets contribute to the derivative
+        const atUpper = (pl.xCapLow < Infinity && x >= pl.xCapLow - 1e-6) || (pl.xMax > 0 && x >= pl.xMax - 1e-6);
+        if (x > pl.xMin + 1e-6 && !atUpper) {
+          const d2 = d2Gdx2(x, pl.c, pl.m, pl.h);
+          if (d2 !== 0 && isFinite(d2)) df += 1 / d2;
+        }
+      }
+      if (Math.abs(f) < 0.001) break;
+      if (f > 0) lo = lambda; else hi = lambda;
+      let next = (df !== 0 && isFinite(df)) ? lambda - f / df : (lo + hi) / 2;
+      if (next <= lo || next >= hi) next = (lo + hi) / 2;
+      lambda = next;
+    }
+    allocations = planets.map(pl => clampedX(pl, lambda));
+
+  } else {
+    // ---- Excess case: more pop than can productively raise growth ----
+    // Allocate optimally first (each planet at peak or cap threshold),
+    // then park the surplus on capped planets where BG stays at 5.0.
+    lambda = 0;
+    allocations = planets.map(pl => clampedX(pl, 0));
+    let excess = p - allocations.reduce((s, x) => s + x, 0);
+
+    // Park excess on capped planets (BG stays >= 5.0 in [xCapLow, xCapHigh])
+    for (let i = 0; i < planets.length && excess > 0.001; i++) {
+      const pl = planets[i];
+      if (pl.xCapLow < Infinity) {
+        let ceiling = pl.xCapHigh;
+        if (pl.xMax > 0) ceiling = Math.min(ceiling, pl.xMax);
+        const room = ceiling - allocations[i];
+        if (room > 0) {
+          const absorb = Math.min(excess, room);
+          allocations[i] += absorb;
+          excess -= absorb;
+        }
+      }
+    }
+
+    // If still excess (very rare — all cap ranges full), distribute to
+    // remaining planets via uncapped bisection with negative lambda.
+    if (excess > 0.001) {
+      // Identify which planets are fully parked (at xCapHigh) vs remaining
+      const fixed = [];
+      const remaining = [];
+      for (let i = 0; i < planets.length; i++) {
+        const pl = planets[i];
+        if (pl.xCapLow < Infinity && allocations[i] >= pl.xCapHigh - 0.001) {
+          fixed.push(i);
+        } else {
+          remaining.push(i);
+        }
+      }
+      if (remaining.length > 0) {
+        const fixedSum = fixed.reduce((s, i) => s + allocations[i], 0);
+        const remBudget = p - fixedSum;
+        function totalRem(lam) {
+          let s = 0;
+          for (const i of remaining) {
+            const pl = planets[i];
+            let x = xForLambda(pl.c, pl.m, pl.h, lam);
+            if (pl.xMax > 0) x = Math.min(x, pl.xMax);
+            s += Math.max(x, pl.xMin);
+          }
+          return s;
+        }
+        let rLo = -0.0001, rHi = 0;
+        for (let i = 0; i < 200; i++) { if (totalRem(rLo) >= remBudget) break; rLo *= 2; }
+        let rLam = (rLo + rHi) / 2;
+        for (let iter = 0; iter < 100; iter++) {
+          const s = totalRem(rLam);
+          if (Math.abs(s - remBudget) < 0.001) break;
+          if (s > remBudget) rHi = rLam; else rLo = rLam;
+          rLam = (rLo + rHi) / 2;
+        }
+        for (const i of remaining) {
+          const pl = planets[i];
+          let x = xForLambda(pl.c, pl.m, pl.h, rLam);
+          if (pl.xMax > 0) x = Math.min(x, pl.xMax);
+          allocations[i] = Math.max(x, pl.xMin);
+        }
+      }
+    }
+  }
+
+  let total = 0;
+  const results = [];
+  const deltas = [];
+  for (let i = 0; i < planets.length; i++) {
+    const pl = planets[i];
+    const x = allocations[i];
+    setOutputCells(pl.row.id, x, pl.c, pl.m, pl.h);
+    results.push({ x, c: pl.c, m: pl.m, h: pl.h });
+    deltas.push({ id: pl.row.id, delta: x - pl.row.pop });
+    total += x;
+  }
+
+  // Render delta column with intensity scaled to the largest absolute delta
+  const maxAbsDelta = deltas.reduce((m, d) => Math.max(m, Math.abs(d.delta)), 0);
+  for (const { id, delta } of deltas) {
+    const el = document.getElementById(`optDelta-${id}`);
+    if (el) {
+      const sign = delta > 0.5 ? '+' : '';
+      el.textContent = Math.abs(delta) < 0.5 ? '0' : sign + Math.round(delta);
+      el.style.background = deltaColor(delta, maxAbsDelta);
+    }
+  }
+
+  const err = Math.abs(total - p);
+  if (err > Math.max(p * 0.001, 1)) {
+    setStatus(`Solver error: allocated ${total.toFixed(1)} vs target ${p.toFixed(1)}`, true);
+  } else {
+    setStatus(`Optimal distribution found (λ = ${lambda.toFixed(6)})`, false);
+  }
+  updateTotals(planets, results);
+  saveState();
+}
+
+function setOutputCells(id, x, c, m, h) {
+  const optEl = document.getElementById(`opt-${id}`);
+  const optBGEl = document.getElementById(`optBG-${id}`);
+  const optMGEl = document.getElementById(`optMG-${id}`);
+  if (optEl) optEl.textContent = x.toFixed(2);
+  const bg = baseGrowth(x, c, h);
+  if (optBGEl) optBGEl.innerHTML = formatBG(bg);
+  if (optMGEl) optMGEl.textContent = (Math.min(BASE_GROWTH_CAP, bg) * m).toFixed(4);
+}
+
+function updateTotals(planets, optimalResults) {
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  const setHTML = (id, val) => { const el = document.getElementById(id); if (el) el.innerHTML = val; };
+  set('tot-c',           planets.reduce((s, { row }) => s + row.c, 0).toFixed(0));
+  set('tot-pop',         planets.reduce((s, { row }) => s + row.pop, 0).toFixed(0));
+  set('tot-assembledPop', planets.reduce((s, { row }) => s + row.assembledPop, 0).toFixed(0));
+  set('tot-popMin',      planets.reduce((s, { row }) => s + (row.popMin || 0), 0) || '');
+  set('tot-availJobs',      planets.reduce((s, { row }) => s + (row.availJobs || 0), 0) || '');
+  set('tot-totalJobs',      planets.reduce((s, { row }) => s + row.pop + row.assembledPop + (row.availJobs || 0), 0));
+
+  let curBGRaw = 0, curBGCapped = 0, curMG = 0;
+  for (const { row, c, m, h } of planets) {
+    const bg = baseGrowth(row.pop, c, h);
+    curBGRaw += bg;
+    curBGCapped += Math.min(BASE_GROWTH_CAP, bg);
+    curMG += Math.min(BASE_GROWTH_CAP, bg) * m;
+  }
+  if (curBGRaw > curBGCapped + 0.0001) {
+    setHTML('tot-curBG', `${curBGCapped.toFixed(4)}<br><span class="bg-uncapped">(${curBGRaw.toFixed(4)})</span>`);
+  } else {
+    set('tot-curBG', curBGCapped.toFixed(4));
+  }
+  set('tot-curMG', curMG.toFixed(4));
+
+  if (optimalResults) {
+    let optPop = 0, optBGRaw = 0, optBGCapped = 0, optMG = 0;
+    for (const { x, c, m, h } of optimalResults) {
+      optPop += x;
+      const bg = baseGrowth(x, c, h);
+      optBGRaw += bg;
+      optBGCapped += Math.min(BASE_GROWTH_CAP, bg);
+      optMG += Math.min(BASE_GROWTH_CAP, bg) * m;
+    }
+    set('tot-opt', optPop.toFixed(2));
+    if (optBGRaw > optBGCapped + 0.0001) {
+      setHTML('tot-optBG', `${optBGCapped.toFixed(4)}<br><span class="bg-uncapped">(${optBGRaw.toFixed(4)})</span>`);
+    } else {
+      set('tot-optBG', optBGCapped.toFixed(4));
+    }
+    set('tot-optMG', optMG.toFixed(4));
+  } else {
+    set('tot-opt',   '—');
+    set('tot-optBG', '—');
+    set('tot-optMG', '—');
+  }
+}
+
+function clearOutputs() {
+  for (const row of rows) {
+    for (const prefix of ['opt', 'optBG', 'optMG']) {
+      const el = document.getElementById(`${prefix}-${row.id}`);
+      if (el) el.textContent = '—';
+    }
+    const dEl = document.getElementById(`optDelta-${row.id}`);
+    if (dEl) { dEl.textContent = '—'; dEl.style.background = 'transparent'; }
+  }
+}
+
+function setStatus(msg, isError) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = 'status' + (isError ? ' error' : '');
+}
+
+document.getElementById('totalPop').addEventListener('input', solve);
+document.getElementById('empireGrowth').addEventListener('input', () => { renderTable(); solve(); });
+document.getElementById('empireHousing').addEventListener('input', () => { renderTable(); solve(); });
+document.getElementById('assembledHousingMod').addEventListener('input', solve);
+
+buildColToggles();
+if (!loadState()) {
+  // Default seed for first-time visitors
+  rows = [
+    { id: 0, name: 'Planet 1', c: 6000, growthMod: 0, housingMod: 0, pop: 3000, assembledPop: 0, popMin: 0, availJobs: 0, totalJobsLocked: false, lockedTotalJobs: 0 },
+    { id: 1, name: 'Planet 2', c: 6000, growthMod: 0, housingMod: 0, pop: 3000, assembledPop: 0, popMin: 0, availJobs: 0, totalJobsLocked: false, lockedTotalJobs: 0 },
+    { id: 2, name: 'Planet 3', c: 6000, growthMod: 0, housingMod: 0, pop: 3000, assembledPop: 0, popMin: 0, availJobs: 0, totalJobsLocked: false, lockedTotalJobs: 0 },
+  ];
+  rowId = 3;
+  document.getElementById('totalPop').value = 9000;
+}
+renderTable();
+solve();
+</script>
+</body>
+</html>
