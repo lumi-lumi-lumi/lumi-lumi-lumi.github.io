@@ -1,1 +1,1250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Stellaris Save Viewer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #16181d;
+    --fg: #d8dee9;
+    --muted: #8a929e;
+    --label: #9aa4b2;
+    --accent: #7aa2f7;
+    --border: #2a2f3a;
+    --btn-bg: #232834;
+    --btn-bg-hover: #2c3240;
+  }
+  html, body { background: var(--bg); }
+  body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; color: var(--fg); }
+  h1 { margin-bottom: 1rem; color: var(--accent); font-weight: 600; }
+  .field { margin: 0.75rem 0; }
+  .label { font-weight: 600; color: var(--label); }
+  .value { font-family: ui-monospace, Consolas, monospace; color: var(--fg); }
+  #status { color: var(--muted); font-style: italic; margin-top: 1rem; min-height: 1.2em; }
+  button {
+    padding: 0.6rem 1.1rem; font-size: 1rem; cursor: pointer;
+    background: var(--btn-bg); color: var(--fg);
+    border: 1px solid var(--border); border-radius: 4px;
+  }
+  button:hover { background: var(--btn-bg-hover); border-color: var(--accent); }
+  #results { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+  details.section {
+    margin: 1rem 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: #1b1e25;
+  }
+  details.section > summary {
+    cursor: pointer;
+    padding: 0.6rem 0.9rem;
+    font-weight: 600;
+    color: var(--label);
+    user-select: none;
+    list-style: none;
+  }
+  details.section > summary::-webkit-details-marker { display: none; }
+  details.section > summary::before {
+    content: '▸';
+    display: inline-block;
+    width: 1em;
+    color: var(--accent);
+    transition: transform 0.15s;
+  }
+  details.section[open] > summary::before { content: '▾'; }
+  details.section > summary:hover { color: var(--fg); }
+  .tech-list {
+    margin: 0;
+    padding: 0.25rem 1.25rem 0.75rem 2rem;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.92rem;
+    column-width: 22rem;
+    column-gap: 1.5rem;
+  }
+  .tech-list li { margin: 0.15rem 0; break-inside: avoid; }
+  .tech-level { color: var(--accent); }
 
+  .councillor-list {
+    list-style: none; margin: 0;
+    padding: 0.5rem 1rem 0.75rem 1.25rem;
+    font-family: ui-monospace, Consolas, monospace; font-size: 0.92rem;
+    column-width: 24rem; column-gap: 1.5rem;
+  }
+  .councillor-list > li { margin: 0 0 0.7rem; break-inside: avoid; }
+  .councillor-head { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: baseline; }
+  .councillor-name { font-weight: 600; color: var(--fg); }
+  .councillor-level { color: var(--accent); }
+  .councillor-tag { color: var(--muted); font-style: italic; }
+  .trait-list {
+    list-style: '— '; margin: 0.15rem 0 0 0;
+    padding-left: 1.25rem; color: var(--muted); font-size: 0.88rem;
+  }
+  .trait-list li { margin: 0; }
+
+  .subsection-heading {
+    margin: 0.75rem 0 0.4rem;
+    padding: 0 1rem;
+    color: var(--label); font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.78rem;
+  }
+  .tradition-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: 0.6rem;
+    padding: 0 1rem;
+  }
+  .tradition-card {
+    border: 1px solid var(--border); border-radius: 4px;
+    background: #1b1e25; padding: 0.5rem 0.75rem;
+  }
+  .tradition-card.finished {
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 1px rgba(122,162,247,0.15);
+  }
+  .tradition-category {
+    font-weight: 600; color: var(--label);
+    margin-bottom: 0.3rem; font-size: 0.95rem;
+    display: flex; justify-content: space-between; align-items: baseline;
+  }
+  .tradition-card.finished .tradition-category { color: var(--accent); }
+  .tradition-finish-mark { font-size: 0.8rem; color: var(--accent); }
+  .tradition-card ul {
+    list-style: none; margin: 0; padding: 0;
+    font-family: ui-monospace, Consolas, monospace; font-size: 0.88rem;
+  }
+  .tradition-card li { padding: 0.05rem 0; }
+
+  .perk-list {
+    list-style: none; margin: 0;
+    padding: 0 1rem 0.75rem 1.25rem;
+    font-family: ui-monospace, Consolas, monospace; font-size: 0.92rem;
+    column-width: 18rem; column-gap: 1.5rem;
+  }
+  .perk-list li { padding: 0.1rem 0; break-inside: avoid; }
+
+  /* Tabs */
+  nav.tabs { display: flex; gap: 0.25rem; margin: 1rem 0 1.25rem; border-bottom: 1px solid var(--border); }
+  .tab-btn {
+    padding: 0.55rem 1.1rem; font-size: 0.95rem;
+    background: transparent; color: var(--muted);
+    border: 1px solid transparent; border-bottom: none;
+    border-radius: 4px 4px 0 0; cursor: pointer;
+    margin-bottom: -1px;
+  }
+  .tab-btn:hover { color: var(--fg); background: var(--btn-bg); }
+  .tab-btn.active { color: var(--accent); background: #1b1e25; border-color: var(--border); }
+  .tab-panel.hidden { display: none; }
+
+  .explorer-toolbar { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+  .explorer-toolbar button[disabled] { opacity: 0.4; cursor: not-allowed; }
+
+  /* Structure tree */
+  .struct-tree { font-family: ui-monospace, Consolas, monospace; font-size: 0.88rem; line-height: 1.5; }
+  .struct-tree details { margin: 0; padding-left: 1rem; border-left: 1px dashed #2a2f3a; }
+  .struct-tree > details:first-child { padding-left: 0; border-left: none; }
+  .struct-tree summary {
+    cursor: pointer; padding: 0.1rem 0.25rem;
+    list-style: none; user-select: none;
+    position: sticky;
+    background: var(--bg);
+    border-bottom: 1px solid transparent;
+  }
+  /* Highlight the deepest currently-sticky breadcrumb with a divider */
+  .struct-tree details[open] > summary { border-bottom-color: var(--border); }
+  .struct-tree summary::-webkit-details-marker { display: none; }
+  .struct-tree summary::before {
+    content: '▸ '; color: var(--accent); display: inline-block; width: 1.1em;
+  }
+  .struct-tree details[open] > summary::before { content: '▾ '; }
+  .struct-tree summary:hover { background: #1b1e25; }
+  .struct-tree .leaf { padding: 0.05rem 0.25rem 0.05rem 1.35rem; }
+  .struct-tree .key { color: var(--fg); }
+  .struct-tree .ann { color: var(--muted); font-style: italic; }
+  .struct-tree .type { color: #c0a8e0; }
+  .struct-tree .strval { color: #b5d99c; }
+  .struct-tree .numval { color: #e0b87a; }
+  .struct-tree .boolval { color: #e08e8e; }
+  .struct-tree .dict-header { color: var(--label); }
+  .struct-tree .meta { color: var(--muted); }
+</style>
+</head>
+<body>
+<h1>Stellaris Save Viewer</h1>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="save">Save</button>
+  <button class="tab-btn" data-tab="explorer">Structure Explorer</button>
+</nav>
+
+<section class="tab-panel" id="tab-save">
+<button id="importBtn">Import save (.sav)</button>
+<input type="file" id="fileInput" accept=".sav" style="display:none">
+<div id="status"></div>
+<div id="results" style="display:none">
+  <div class="field"><span class="label">Game version:</span> <span class="value" id="version"></span></div>
+  <div class="field"><span class="label">Game year:</span>    <span class="value" id="gameYear"></span></div>
+  <div class="field"><span class="label">Player:</span>       <span class="value" id="player"></span></div>
+  <div class="field"><span class="label">Origin:</span>       <span class="value" id="origin"></span></div>
+  <div class="field"><span class="label">Ethics:</span>       <span class="value" id="ethics"></span></div>
+  <div class="field"><span class="label">Authority:</span>    <span class="value" id="authority"></span></div>
+  <div class="field"><span class="label">Civics:</span>       <span class="value" id="civics"></span></div>
+  <div class="field"><span class="label">Shipset:</span>      <span class="value" id="shipset"></span></div>
+
+  <details class="section">
+    <summary>DLCs (<span id="dlcCount">0</span>)</summary>
+    <ul id="dlcList" class="tech-list"></ul>
+  </details>
+
+  <details class="section" open>
+    <summary>Councillors (<span id="councillorCount">0</span>)</summary>
+    <ul id="councillorList" class="councillor-list"></ul>
+  </details>
+
+  <details class="section" open>
+    <summary>Traditions and Ascension Perks</summary>
+    <div class="subsection-heading">Traditions (<span id="traditionCount">0</span>)</div>
+    <div id="traditionGrid" class="tradition-grid"></div>
+    <div class="subsection-heading">Ascension Perks (<span id="perkCount">0</span>)</div>
+    <ul id="perkList" class="perk-list"></ul>
+  </details>
+
+  <details class="section" open>
+    <summary>Technologies (<span id="techCount">0</span>)</summary>
+    <ul id="techList" class="tech-list"></ul>
+  </details>
+</div>
+</section>
+
+<section class="tab-panel hidden" id="tab-explorer">
+<div class="explorer-toolbar">
+  <button id="explorerImportBtn">Import save (.sav)</button>
+  <button id="expandAllBtn" disabled>Expand all</button>
+  <button id="collapseAllBtn" disabled>Collapse all</button>
+</div>
+<input type="file" id="explorerFileInput" accept=".sav" style="display:none">
+<div id="explorerStatus"></div>
+<div id="explorerResults" class="struct-tree"></div>
+</section>
+
+<script>
+"use strict";
+
+/* ============================================================
+ * Selective PDX (Paradox script) parser.
+ *
+ * Schema-driven: only keys named in the schema are materialised;
+ * everything else is brace-counted and discarded so we never
+ * allocate objects for sections we don't care about (species_db,
+ * country, etc.) which is what keeps gamestate parsing tractable.
+ *
+ * Schema rules:
+ *   true                    => capture this subtree fully
+ *   { key: <sub-schema> }   => capture only listed keys
+ *   { _items: <sub-schema> }=> sub-schema applied to anonymous
+ *                              child entries (list items)
+ *
+ * Output shape:
+ *   - Each object is a plain JS object.
+ *   - Named scalars are stored under their key.
+ *   - Duplicate keys collapse into an array (marked .__multi).
+ *   - Anonymous children (both `{...}` blocks and bare scalars
+ *     appearing without `key=`) collect into `_items`.
+ * ============================================================ */
+class PdxParser {
+  constructor(text) {
+    this.s = text;
+    this.i = 0;
+    this.n = text.length;
+  }
+
+  skipWs() {
+    const s = this.s;
+    while (this.i < this.n) {
+      const c = s.charCodeAt(this.i);
+      if (c === 32 || c === 9 || c === 10 || c === 13) { this.i++; continue; }
+      if (c === 35) { // '#' line comment
+        while (this.i < this.n && s.charCodeAt(this.i) !== 10) this.i++;
+        continue;
+      }
+      break;
+    }
+  }
+
+  // Returns: '{' | '}' | '=' | { type:'str'|'num'|'bare', value } | null
+  readToken() {
+    this.skipWs();
+    if (this.i >= this.n) return null;
+    const s = this.s;
+    const c = s[this.i];
+    if (c === '{' || c === '}' || c === '=') { this.i++; return c; }
+    if (c === '"') {
+      this.i++;
+      const start = this.i;
+      while (this.i < this.n && s[this.i] !== '"') {
+        if (s[this.i] === '\\' && this.i + 1 < this.n) this.i++;
+        this.i++;
+      }
+      const v = s.slice(start, this.i);
+      if (this.i < this.n) this.i++;
+      return { type: 'str', value: v };
+    }
+    const start = this.i;
+    while (this.i < this.n) {
+      const ch = s[this.i];
+      if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r' ||
+          ch === '{' || ch === '}' || ch === '=' || ch === '"' || ch === '#') break;
+      this.i++;
+    }
+    const raw = s.slice(start, this.i);
+    if (/^-?\d+(\.\d+)?$/.test(raw)) return { type: 'num', value: Number(raw) };
+    return { type: 'bare', value: raw };
+  }
+
+  // Consume tokens until the matching '}' has been read. Assumes the
+  // opening '{' has already been consumed.
+  skipBlock() {
+    let depth = 1;
+    while (depth > 0) {
+      const t = this.readToken();
+      if (t === null) return;
+      if (t === '{') depth++;
+      else if (t === '}') depth--;
+    }
+  }
+
+  // Parse the contents of an object up to (but not consuming) the
+  // matching '}'. Caller is responsible for consuming the closer.
+  parseObject(schema) {
+    const result = {};
+    const items = [];
+    const captureAll = schema === true;
+    const itemSchema = captureAll ? true : (schema && schema._items) || null;
+
+    while (true) {
+      this.skipWs();
+      if (this.i >= this.n) break;
+      const c = this.s[this.i];
+      if (c === '}') break;
+
+      // Anonymous object child: `{ ... }` with no key=
+      if (c === '{') {
+        this.i++;
+        if (captureAll || itemSchema) {
+          const child = this.parseObject(itemSchema === true ? true : itemSchema);
+          items.push(child);
+          this.skipWs();
+          if (this.s[this.i] === '}') this.i++;
+        } else {
+          this.skipBlock();
+        }
+        continue;
+      }
+
+      const first = this.readToken();
+      if (first === null) break;
+      if (typeof first === 'string') {
+        // unexpected punctuation; treat as end-of-object
+        if (first === '}') break;
+        continue;
+      }
+
+      this.skipWs();
+      if (this.s[this.i] === '=') {
+        this.i++;
+        const key = first.value;
+        const wanted = captureAll ? true : (schema ? schema[key] : false);
+        this.skipWs();
+        if (this.s[this.i] === '{') {
+          this.i++;
+          if (wanted) {
+            const sub = this.parseObject(wanted === true ? true : wanted);
+            this.storeKey(result, key, sub);
+            this.skipWs();
+            if (this.s[this.i] === '}') this.i++;
+          } else {
+            this.skipBlock();
+          }
+        } else {
+          const val = this.readToken();
+          if (wanted && val !== null && typeof val === 'object') {
+            this.storeKey(result, key, val.value);
+          }
+        }
+      } else {
+        // Bare scalar appearing without `key=` — a list element such
+        // as in `tags={ "a" "b" "c" }` or `nums={ 1 2 3 }`.
+        if (captureAll || itemSchema) items.push(first.value);
+      }
+    }
+
+    if (items.length) result._items = items;
+    return result;
+  }
+
+  storeKey(obj, key, value) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      const existing = obj[key];
+      if (Array.isArray(existing) && existing.__multi) {
+        existing.push(value);
+      } else {
+        const arr = [existing, value];
+        arr.__multi = true;
+        obj[key] = arr;
+      }
+    } else {
+      obj[key] = value;
+    }
+  }
+
+  parseRoot(schema) {
+    return this.parseObject(schema);
+  }
+}
+
+/* ============================================================
+ * Save-file field extractors. One function per field; each
+ * declares the minimal schema needed to read what it returns.
+ * ============================================================ */
+function parseMetaVersion(metaText) {
+  const m = metaText.match(/^\s*version\s*=\s*"([^"]*)"/);
+  return m ? m[1] : null;
+}
+
+// Pass 1: top-level fields plus the player's identity. Everything
+// here lives at the root of gamestate so a single targeted parse
+// covers it.
+function extractGameInfo(gamestateText) {
+  const root = new PdxParser(gamestateText).parseRoot({
+    required_dlcs: true,
+    date: true,
+    player: true
+  });
+
+  const dlcs = root.required_dlcs && root.required_dlcs._items
+    ? root.required_dlcs._items.filter(x => typeof x === 'string')
+    : [];
+
+  const date = typeof root.date === 'string' ? root.date : null;
+
+  let playerName = null, playerCountryIdx = null;
+  const player = root.player;
+  if (player && player._items) {
+    for (const entry of player._items) {
+      if (entry && typeof entry === 'object' && entry.name && entry.name !== 'unknown') {
+        playerName = entry.name;
+        playerCountryIdx = entry.country;
+        break;
+      }
+    }
+  }
+
+  return { dlcs, date, playerName, playerCountryIdx };
+}
+
+// Pass 2: parse only the player's country entry, capturing every
+// field we currently surface in the UI.
+function extractPlayerCountryDetails(gamestateText, countryIdx) {
+  const schema = {
+    country: {
+      [countryIdx]: {
+        ethos: { ethic: true },
+        government: { origin: true, authority: true, civics: true },
+        tech_status: { technology: true, level: true },
+        owned_leaders: true,
+        ruler: true,
+        traditions: true,
+        ascension_perks: true
+      }
+    }
+  };
+  const root = new PdxParser(gamestateText).parseRoot(schema);
+  const country = root.country && root.country[countryIdx];
+  if (!country) return null;
+
+  const ethics = country.ethos && country.ethos.ethic
+    ? [].concat(country.ethos.ethic)
+    : [];
+
+  const government = country.government || {};
+  const origin = typeof government.origin === 'string' ? government.origin : null;
+  const authority = typeof government.authority === 'string' ? government.authority : null;
+  const civics = government.civics && government.civics._items
+    ? government.civics._items.filter(x => typeof x === 'string')
+    : [];
+
+  // technology[i] pairs with level[i]; duplicate keys collapse into
+  // an ordered array.
+  const techStatus = country.tech_status;
+  const technologies = [];
+  if (techStatus) {
+    const techs  = techStatus.technology == null ? [] : [].concat(techStatus.technology);
+    const levels = techStatus.level == null      ? [] : [].concat(techStatus.level);
+    for (let i = 0; i < techs.length; i++) {
+      const lvl = i < levels.length ? levels[i] : 0;
+      if (lvl >= 1) technologies.push({ name: techs[i], level: lvl });
+    }
+  }
+
+  const ownedLeaders = country.owned_leaders && country.owned_leaders._items
+    ? country.owned_leaders._items.filter(x => typeof x === 'number')
+    : [];
+  const ruler = typeof country.ruler === 'number' ? country.ruler : null;
+
+  const traditions = country.traditions && country.traditions._items
+    ? country.traditions._items.filter(x => typeof x === 'string')
+    : [];
+  const ascensionPerks = country.ascension_perks && country.ascension_perks._items
+    ? country.ascension_perks._items.filter(x => typeof x === 'string')
+    : [];
+
+  return { origin, ethics, authority, civics, technologies, ownedLeaders, ruler, traditions, ascensionPerks };
+}
+
+// Display-name helpers. We keep small words lowercase (except as the
+// first word) so "tr_discovery_faith_in_science" reads as
+// "Faith in Science" rather than "Faith In Science".
+const SMALL_WORDS = new Set(['a','an','the','of','in','on','at','to','by','and','but','or','for','nor']);
+function titleCaseWords(words) {
+  return words.map((w, i) => {
+    const lw = String(w).toLowerCase();
+    if (i > 0 && SMALL_WORDS.has(lw)) return lw;
+    return lw.charAt(0).toUpperCase() + lw.slice(1);
+  }).join(' ');
+}
+function capitalize(s) {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : s;
+}
+
+// Group traditions by category in save order. The opener (_adopt) and
+// finisher (_finish) are not included in the per-card list; the
+// finisher flips a `finished` flag on the category.
+function processTraditions(traditions) {
+  const categories = new Map();
+  for (const t of traditions) {
+    const parts = t.split('_');
+    if (parts[0] !== 'tr' || parts.length < 3) continue;
+    const cat = parts[1];
+    const nameParts = parts.slice(2);
+    let entry = categories.get(cat);
+    if (!entry) {
+      entry = { category: cat, finished: false, items: [] };
+      categories.set(cat, entry);
+    }
+    if (nameParts.length === 1 && nameParts[0] === 'adopt') continue;
+    if (nameParts.length === 1 && nameParts[0] === 'finish') { entry.finished = true; continue; }
+    entry.items.push({ raw: t, label: titleCaseWords(nameParts) });
+  }
+  return [...categories.values()];
+}
+
+function processAscensionPerks(perks) {
+  return perks.map(p => {
+    const parts = p.split('_');
+    const nameParts = parts[0] === 'ap' ? parts.slice(1) : parts;
+    return { raw: p, label: titleCaseWords(nameParts) };
+  });
+}
+
+// Resolve a leader's display name from their `name.full_names` block.
+// Two cases:
+//   literal=yes  -> use `key` directly (already a real name)
+//   templated    -> join variable values in numeric-key order, stripping
+//                   the `<NAMESET>_CHR_` prefix and turning '_' into ' '.
+function resolveLeaderName(nameObj) {
+  if (!nameObj || !nameObj.full_names) return '(unknown)';
+  const fn = nameObj.full_names;
+  if (fn.literal === 'yes' && typeof fn.key === 'string') return fn.key;
+
+  if (fn.variables && fn.variables._items) {
+    const parts = fn.variables._items
+      .filter(v => v && typeof v === 'object' && typeof v.key !== 'undefined')
+      .map(v => ({ order: Number(v.key), raw: v.value && v.value.key }))
+      .filter(p => typeof p.raw === 'string')
+      .sort((a, b) => a.order - b.order)
+      .map(p => {
+        const m = p.raw.match(/_CHR_(.+)$/);
+        return (m ? m[1] : p.raw).replace(/_/g, ' ');
+      })
+      .filter(s => s.length);
+    if (parts.length) return parts.join(' ');
+  }
+  return typeof fn.key === 'string' ? fn.key : '(unknown)';
+}
+
+// Pass 3: fetch only the player's owned-leader entries from the
+// global `leaders` dict. A leader is a councillor if they have a
+// `council_location` property OR they are the country's ruler
+// (the ruler doesn't carry `council_location`).
+function extractCouncillors(gamestateText, ownedLeaderIds, rulerId) {
+  if (!ownedLeaderIds || !ownedLeaderIds.length) return [];
+
+  const leadersSchema = {};
+  for (const id of ownedLeaderIds) {
+    leadersSchema[id] = {
+      council_location: true,
+      name: { full_names: true },
+      traits: true,
+      level: true,
+      bonus_skill_level: true
+    };
+  }
+  const root = new PdxParser(gamestateText).parseRoot({ leaders: leadersSchema });
+  const leaders = root.leaders || {};
+
+  const out = [];
+  for (const id of ownedLeaderIds) {
+    const leader = leaders[id];
+    if (!leader) continue;
+    const isRuler = id === rulerId;
+    const onCouncil = leader.council_location != null;
+    if (isRuler || onCouncil) {
+      const traits = leader.traits == null
+        ? []
+        : [].concat(leader.traits).filter(t => typeof t === 'string');
+      const level = typeof leader.level === 'number' ? leader.level : null;
+      const bonus = typeof leader.bonus_skill_level === 'number' ? leader.bonus_skill_level : 0;
+      out.push({ id, name: resolveLeaderName(leader.name), isRuler, traits, level, bonus });
+    }
+  }
+  return out;
+}
+
+// Shipset is not stored as a top-level flag we know of, so we infer
+// it from researched technologies. tech_maulers => Biological,
+// tech_corvettes => Mechanical, both/neither => Indeterminate.
+function deriveShipset(technologies) {
+  const names = new Set(technologies.map(t => t.name));
+  const bio = names.has('tech_maulers');
+  const mech = names.has('tech_corvettes');
+  if (bio && mech) return 'Indeterminate';
+  if (bio) return 'Biological';
+  if (mech) return 'Mechanical';
+  return 'Indeterminate';
+}
+
+/* ============================================================
+ * Structural exploration: parse the entire gamestate, but instead
+ * of materialising every node, fold sibling shapes together as we
+ * go so memory stays bounded.
+ *
+ * Shape node:
+ *   {
+ *     occurrences: number,            // total times this position seen
+ *     scalar: ScalarShape | null,     // present when this position was ever a scalar
+ *     object: ObjectShape | null      // present when this position was ever an object
+ *   }
+ *
+ * ScalarShape: { types: Set<'string'|'number'|'bool'>,
+ *                examples: [{type,value}, ...],   // de-duplicated, cap 10
+ *                exampleSet: Set<string>,         // dedup key
+ *                uniqueCount: number,             // exact until overflow, then ≥10
+ *                overflow: boolean }
+ *
+ * ObjectShape: { fields: Map<string, Shape>,     // string-keyed children
+ *                dictShape: Shape | null,         // merged value-shape of numeric keys
+ *                dictCount: number,
+ *                dictKeys: [...], dictKeyOverflow: bool,
+ *                itemShape: Shape | null,         // merged shape of `{...}` anon items
+ *                itemCount: number }
+ * ============================================================ */
+const SCALAR_EXAMPLE_CAP = 10;
+const DICT_KEY_EXAMPLE_CAP = 8;
+
+function newShape() {
+  return { occurrences: 0, scalar: null, object: null };
+}
+function newScalar() {
+  return { types: new Set(), examples: [], exampleSet: new Set(), uniqueCount: 0, overflow: false };
+}
+function newObject() {
+  return {
+    fields: new Map(),
+    dictShape: null, dictCount: 0, dictKeys: [], dictKeyOverflow: false,
+    itemShape: null, itemCount: 0
+  };
+}
+
+function addScalarSample(sc, type, value) {
+  sc.types.add(type);
+  const key = type + ':' + (typeof value === 'string' ? value : String(value));
+  if (sc.exampleSet.has(key)) return;
+  sc.exampleSet.add(key);
+  sc.uniqueCount++;
+  if (sc.examples.length < SCALAR_EXAMPLE_CAP) {
+    sc.examples.push({ type, value });
+  } else {
+    sc.overflow = true;
+  }
+}
+
+function shapeFromToken(tok) {
+  const shape = newShape();
+  shape.occurrences = 1;
+  if (tok == null || typeof tok === 'string') return shape;
+  shape.scalar = newScalar();
+  let type, value;
+  if (tok.type === 'num') { type = 'number'; value = tok.value; }
+  else if (tok.type === 'str') { type = 'string'; value = tok.value; }
+  else if (tok.value === 'yes' || tok.value === 'no') { type = 'bool'; value = tok.value === 'yes'; }
+  else { type = 'string'; value = tok.value; }
+  addScalarSample(shape.scalar, type, value);
+  return shape;
+}
+
+function mergeScalar(target, source) {
+  if (!source) return target;
+  if (!target) target = newScalar();
+  for (const t of source.types) target.types.add(t);
+  for (const ex of source.examples) addScalarSample(target, ex.type, ex.value);
+  if (source.overflow) target.overflow = true;
+  return target;
+}
+
+function mergeObject(target, source) {
+  if (!source) return target;
+  if (!target) target = newObject();
+  for (const [k, v] of source.fields) {
+    target.fields.set(k, mergeShape(target.fields.get(k), v));
+  }
+  target.dictShape = mergeShape(target.dictShape, source.dictShape);
+  target.dictCount += source.dictCount;
+  if (!target.dictKeyOverflow) {
+    for (const k of source.dictKeys) {
+      if (target.dictKeys.includes(k)) continue;
+      if (target.dictKeys.length < DICT_KEY_EXAMPLE_CAP) target.dictKeys.push(k);
+      else { target.dictKeyOverflow = true; break; }
+    }
+  }
+  target.itemShape = mergeShape(target.itemShape, source.itemShape);
+  target.itemCount += source.itemCount;
+  return target;
+}
+
+function mergeShape(target, source) {
+  if (!source) return target;
+  if (!target) target = newShape();
+  target.occurrences += source.occurrences;
+  if (source.scalar) target.scalar = mergeScalar(target.scalar, source.scalar);
+  if (source.object) target.object = mergeObject(target.object, source.object);
+  return target;
+}
+
+class PdxStructureParser extends PdxParser {
+  // Parses the contents of an object up to (but not consuming) the
+  // matching '}'. Returns a Shape. Siblings are folded together
+  // immediately so no full tree is retained.
+  parseObjectShape() {
+    const shape = newShape();
+    shape.occurrences = 1;
+    const obj = shape.object = newObject();
+
+    while (true) {
+      this.skipWs();
+      if (this.i >= this.n) break;
+      const c = this.s[this.i];
+      if (c === '}') break;
+
+      if (c === '{') {
+        this.i++;
+        const child = this.parseObjectShape();
+        this.skipWs();
+        if (this.s[this.i] === '}') this.i++;
+        obj.itemShape = mergeShape(obj.itemShape, child);
+        obj.itemCount++;
+        continue;
+      }
+
+      const first = this.readToken();
+      if (first === null) break;
+      if (typeof first === 'string') {
+        if (first === '}') break;
+        continue;
+      }
+
+      this.skipWs();
+      if (this.s[this.i] === '=') {
+        this.i++;
+        const key = first.value;
+        let valueShape;
+        this.skipWs();
+        if (this.s[this.i] === '{') {
+          this.i++;
+          valueShape = this.parseObjectShape();
+          this.skipWs();
+          if (this.s[this.i] === '}') this.i++;
+        } else {
+          valueShape = shapeFromToken(this.readToken());
+        }
+
+        if (typeof key === 'number') {
+          obj.dictShape = mergeShape(obj.dictShape, valueShape);
+          obj.dictCount++;
+          if (!obj.dictKeyOverflow) {
+            if (obj.dictKeys.length < DICT_KEY_EXAMPLE_CAP) obj.dictKeys.push(key);
+            else obj.dictKeyOverflow = true;
+          }
+        } else {
+          const keyStr = String(key);
+          obj.fields.set(keyStr, mergeShape(obj.fields.get(keyStr), valueShape));
+        }
+      } else {
+        // bare scalar list item (e.g. inside `{ 1 2 3 }`)
+        const itemShape = shapeFromToken(first);
+        obj.itemShape = mergeShape(obj.itemShape, itemShape);
+        obj.itemCount++;
+      }
+    }
+
+    return shape;
+  }
+}
+
+/* ============================================================
+ * Structure tree renderer.
+ * ============================================================ */
+function fmtValue(ex) {
+  if (ex.type === 'string') return '"' + ex.value + '"';
+  if (ex.type === 'bool')   return ex.value ? 'yes' : 'no';
+  return String(ex.value);
+}
+function valueClass(ex) {
+  if (ex.type === 'string') return 'strval';
+  if (ex.type === 'bool')   return 'boolval';
+  return 'numval';
+}
+
+function renderScalarAnnotation(sc) {
+  const frag = document.createDocumentFragment();
+  const typeLabel = sc.types.size === 1 ? [...sc.types][0] : [...sc.types].join('|');
+  const typeSpan = document.createElement('span');
+  typeSpan.className = 'type';
+  typeSpan.textContent = typeLabel;
+  frag.appendChild(typeSpan);
+
+  if (sc.overflow) {
+    // More than cap distinct values seen; show first N as examples.
+    const meta = document.createElement('span');
+    meta.className = 'meta';
+    meta.textContent = ' (' + SCALAR_EXAMPLE_CAP + '+ unique, e.g. ';
+    frag.appendChild(meta);
+    sc.examples.forEach((ex, i) => {
+      if (i > 0) frag.appendChild(document.createTextNode(', '));
+      const s = document.createElement('span');
+      s.className = valueClass(ex);
+      s.textContent = fmtValue(ex);
+      frag.appendChild(s);
+    });
+    const close = document.createElement('span');
+    close.className = 'meta';
+    close.textContent = ')';
+    frag.appendChild(close);
+  } else {
+    // Show as enum of all observed distinct values.
+    frag.appendChild(document.createTextNode(' '));
+    const enumOpen = document.createElement('span');
+    enumOpen.className = 'meta';
+    enumOpen.textContent = 'enum[';
+    frag.appendChild(enumOpen);
+    sc.examples.forEach((ex, i) => {
+      if (i > 0) frag.appendChild(document.createTextNode(', '));
+      const s = document.createElement('span');
+      s.className = valueClass(ex);
+      s.textContent = fmtValue(ex);
+      frag.appendChild(s);
+    });
+    const enumClose = document.createElement('span');
+    enumClose.className = 'meta';
+    enumClose.textContent = ']';
+    frag.appendChild(enumClose);
+  }
+  return frag;
+}
+
+function objectAnnotation(obj) {
+  const parts = [];
+  if (obj.fields.size) parts.push(obj.fields.size + ' field' + (obj.fields.size === 1 ? '' : 's'));
+  if (obj.dictCount)   parts.push(obj.dictCount + ' dict entr' + (obj.dictCount === 1 ? 'y' : 'ies'));
+  if (obj.itemCount)   parts.push(obj.itemCount + ' item' + (obj.itemCount === 1 ? '' : 's'));
+  return parts.length ? '{' + parts.join(', ') + '}' : '{empty}';
+}
+
+// Each summary row is ~1.5em tall (line-height 1.5 + small padding);
+// stacking sticky tops by that amount makes deeper levels stick just
+// below their ancestors instead of overlapping them.
+const STICKY_ROW_EM = 1.5;
+
+function renderShape(label, shape, openByDefault, depth = 0) {
+  // Decide leaf vs collapsible: if the shape has only a scalar part
+  // (or is empty), render as a single line; otherwise a <details>.
+  const hasObject = !!shape.object && (
+    shape.object.fields.size || shape.object.dictCount || shape.object.itemCount
+  );
+
+  if (!hasObject) {
+    const div = document.createElement('div');
+    div.className = 'leaf';
+    const k = document.createElement('span');
+    k.className = 'key';
+    k.textContent = label + ': ';
+    div.appendChild(k);
+    if (shape.scalar) {
+      div.appendChild(renderScalarAnnotation(shape.scalar));
+    } else {
+      const ann = document.createElement('span');
+      ann.className = 'ann';
+      ann.textContent = '{empty}';
+      div.appendChild(ann);
+    }
+    return div;
+  }
+
+  const details = document.createElement('details');
+  if (openByDefault) details.open = true;
+  const summary = document.createElement('summary');
+  summary.style.top = (depth * STICKY_ROW_EM) + 'em';
+  // Deeper summaries paint above shallower ones if they ever overlap
+  // (z-index isn't strictly needed since tops differ, but cheap insurance).
+  summary.style.zIndex = String(1000 - depth);
+  const k = document.createElement('span');
+  k.className = 'key';
+  k.textContent = label + ' ';
+  summary.appendChild(k);
+  const ann = document.createElement('span');
+  ann.className = 'ann';
+  ann.textContent = objectAnnotation(shape.object);
+  summary.appendChild(ann);
+  if (shape.scalar) {
+    // Mixed: also appeared as scalar in some occurrences
+    summary.appendChild(document.createTextNode(' '));
+    const tag = document.createElement('span');
+    tag.className = 'meta';
+    tag.textContent = '(also scalar: ';
+    summary.appendChild(tag);
+    summary.appendChild(renderScalarAnnotation(shape.scalar));
+    const close = document.createElement('span');
+    close.className = 'meta';
+    close.textContent = ')';
+    summary.appendChild(close);
+  }
+  details.appendChild(summary);
+
+  const body = document.createDocumentFragment();
+  // Named fields, in insertion order (which is save order)
+  for (const [k2, v] of shape.object.fields) {
+    body.appendChild(renderShape(k2, v, false, depth + 1));
+  }
+  // Numeric-keyed dict entries -> single merged item
+  if (shape.object.dictCount) {
+    const keysStr = shape.object.dictKeys.join(', ') + (shape.object.dictKeyOverflow ? ', …' : '');
+    const dictLabel = '<' + shape.object.dictCount + ' dict entries, keys: ' + keysStr + '>';
+    if (shape.object.dictShape) {
+      body.appendChild(renderShape(dictLabel, shape.object.dictShape, false, depth + 1));
+    } else {
+      const div = document.createElement('div');
+      div.className = 'leaf dict-header';
+      div.textContent = dictLabel;
+      body.appendChild(div);
+    }
+  }
+  // Anonymous items -> single merged item
+  if (shape.object.itemCount) {
+    const itemLabel = '<' + shape.object.itemCount + ' anonymous items>';
+    if (shape.object.itemShape) {
+      body.appendChild(renderShape(itemLabel, shape.object.itemShape, false, depth + 1));
+    } else {
+      const div = document.createElement('div');
+      div.className = 'leaf dict-header';
+      div.textContent = itemLabel;
+      body.appendChild(div);
+    }
+  }
+  details.appendChild(body);
+  return details;
+}
+
+/* ============================================================
+ * UI wiring.
+ * ============================================================ */
+const importBtn  = document.getElementById('importBtn');
+const fileInput  = document.getElementById('fileInput');
+const statusEl   = document.getElementById('status');
+const resultsEl  = document.getElementById('results');
+const versionEl   = document.getElementById('version');
+const gameYearEl  = document.getElementById('gameYear');
+const playerEl    = document.getElementById('player');
+const originEl    = document.getElementById('origin');
+const ethicsEl    = document.getElementById('ethics');
+const authorityEl = document.getElementById('authority');
+const civicsEl    = document.getElementById('civics');
+const shipsetEl   = document.getElementById('shipset');
+const dlcListEl   = document.getElementById('dlcList');
+const dlcCountEl  = document.getElementById('dlcCount');
+const councillorListEl  = document.getElementById('councillorList');
+const councillorCountEl = document.getElementById('councillorCount');
+const traditionGridEl   = document.getElementById('traditionGrid');
+const traditionCountEl  = document.getElementById('traditionCount');
+const perkListEl        = document.getElementById('perkList');
+const perkCountEl       = document.getElementById('perkCount');
+const techListEl  = document.getElementById('techList');
+const techCountEl = document.getElementById('techCount');
+
+const NA = '(not found)';
+function fmtList(arr) { return arr.length ? arr.join(', ') : NA; }
+function fmtStr(s)    { return s == null || s === '' ? NA : s; }
+
+function fillSimpleList(ulEl, items) {
+  ulEl.replaceChildren();
+  const frag = document.createDocumentFragment();
+  for (const item of items) {
+    const li = document.createElement('li');
+    li.textContent = item;
+    frag.appendChild(li);
+  }
+  ulEl.appendChild(frag);
+}
+
+importBtn.addEventListener('click', () => fileInput.click());
+
+fileInput.addEventListener('change', async () => {
+  const file = fileInput.files[0];
+  if (!file) return;
+  resultsEl.style.display = 'none';
+  statusEl.textContent = 'Reading save…';
+  try {
+    const buf = await file.arrayBuffer();
+    statusEl.textContent = 'Unzipping…';
+    const zip = await JSZip.loadAsync(buf);
+    const metaFile = zip.file('meta');
+    const gamestateFile = zip.file('gamestate');
+    if (!metaFile) throw new Error("Save is missing the 'meta' entry");
+    if (!gamestateFile) throw new Error("Save is missing the 'gamestate' entry");
+
+    statusEl.textContent = 'Reading meta…';
+    const metaText = await metaFile.async('string');
+    const version = parseMetaVersion(metaText);
+
+    statusEl.textContent = 'Parsing gamestate (top-level)…';
+    const gamestateText = await gamestateFile.async('string');
+    const info = extractGameInfo(gamestateText);
+
+    versionEl.textContent  = fmtStr(version);
+    gameYearEl.textContent = fmtStr(info.date);
+    playerEl.textContent   = fmtStr(info.playerName);
+
+    dlcCountEl.textContent = info.dlcs.length;
+    fillSimpleList(dlcListEl, info.dlcs);
+
+    techListEl.replaceChildren();
+    if (info.playerCountryIdx != null) {
+      statusEl.textContent = 'Parsing gamestate (player country)…';
+      const details = extractPlayerCountryDetails(gamestateText, info.playerCountryIdx);
+      if (details) {
+        originEl.textContent    = fmtStr(details.origin);
+        ethicsEl.textContent    = fmtList(details.ethics);
+        authorityEl.textContent = fmtStr(details.authority);
+        civicsEl.textContent    = fmtList(details.civics);
+        shipsetEl.textContent   = deriveShipset(details.technologies);
+
+        techCountEl.textContent = details.technologies.length;
+        const frag = document.createDocumentFragment();
+        for (const t of details.technologies) {
+          const li = document.createElement('li');
+          li.textContent = t.name;
+          if (t.level > 1) {
+            const span = document.createElement('span');
+            span.className = 'tech-level';
+            span.textContent = ' (' + t.level + ')';
+            li.appendChild(span);
+          }
+          frag.appendChild(li);
+        }
+        techListEl.appendChild(frag);
+
+        // Traditions and ascension perks (already in `details` from pass 2).
+        const tradCats = processTraditions(details.traditions);
+        const totalTraditions = details.traditions.length;
+        traditionCountEl.textContent = totalTraditions;
+        traditionGridEl.replaceChildren();
+        const tgFrag = document.createDocumentFragment();
+        for (const cat of tradCats) {
+          const card = document.createElement('div');
+          card.className = 'tradition-card' + (cat.finished ? ' finished' : '');
+          const head = document.createElement('div');
+          head.className = 'tradition-category';
+          const title = document.createElement('span');
+          title.textContent = capitalize(cat.category);
+          head.appendChild(title);
+          if (cat.finished) {
+            const mark = document.createElement('span');
+            mark.className = 'tradition-finish-mark';
+            mark.textContent = 'finished';
+            head.appendChild(mark);
+          }
+          card.appendChild(head);
+          const ul = document.createElement('ul');
+          for (const it of cat.items) {
+            const li = document.createElement('li');
+            li.textContent = it.label;
+            ul.appendChild(li);
+          }
+          card.appendChild(ul);
+          tgFrag.appendChild(card);
+        }
+        traditionGridEl.appendChild(tgFrag);
+
+        const perks = processAscensionPerks(details.ascensionPerks);
+        perkCountEl.textContent = perks.length;
+        perkListEl.replaceChildren();
+        const pFrag = document.createDocumentFragment();
+        for (const p of perks) {
+          const li = document.createElement('li');
+          li.textContent = p.label;
+          pFrag.appendChild(li);
+        }
+        perkListEl.appendChild(pFrag);
+
+        statusEl.textContent = 'Parsing gamestate (councillors)…';
+        await new Promise(r => setTimeout(r, 0));
+        const councillors = extractCouncillors(gamestateText, details.ownedLeaders, details.ruler);
+        councillorCountEl.textContent = councillors.length;
+        councillorListEl.replaceChildren();
+        const cfrag = document.createDocumentFragment();
+        for (const c of councillors) {
+          const li = document.createElement('li');
+
+          const head = document.createElement('div');
+          head.className = 'councillor-head';
+          const nameEl = document.createElement('span');
+          nameEl.className = 'councillor-name';
+          nameEl.textContent = c.name;
+          head.appendChild(nameEl);
+
+          if (c.level != null) {
+            const lvlEl = document.createElement('span');
+            lvlEl.className = 'councillor-level';
+            lvlEl.textContent = c.bonus > 0
+              ? 'Lvl ' + c.level + '+' + c.bonus
+              : 'Lvl ' + c.level;
+            head.appendChild(lvlEl);
+          }
+          if (c.isRuler) {
+            const tagEl = document.createElement('span');
+            tagEl.className = 'councillor-tag';
+            tagEl.textContent = '(ruler)';
+            head.appendChild(tagEl);
+          }
+          li.appendChild(head);
+
+          if (c.traits.length) {
+            const tl = document.createElement('ul');
+            tl.className = 'trait-list';
+            for (const t of c.traits) {
+              const tli = document.createElement('li');
+              tli.textContent = t;
+              tl.appendChild(tli);
+            }
+            li.appendChild(tl);
+          }
+
+          cfrag.appendChild(li);
+        }
+        councillorListEl.appendChild(cfrag);
+      } else {
+        originEl.textContent = authorityEl.textContent = shipsetEl.textContent = NA;
+        ethicsEl.textContent = civicsEl.textContent = NA;
+        techCountEl.textContent = '0';
+        councillorCountEl.textContent = '0';
+        councillorListEl.replaceChildren();
+        traditionCountEl.textContent = '0';
+        traditionGridEl.replaceChildren();
+        perkCountEl.textContent = '0';
+        perkListEl.replaceChildren();
+      }
+    } else {
+      originEl.textContent = authorityEl.textContent = shipsetEl.textContent = NA;
+      ethicsEl.textContent = civicsEl.textContent = NA;
+      techCountEl.textContent = '0';
+      councillorCountEl.textContent = '0';
+      councillorListEl.replaceChildren();
+    }
+
+    resultsEl.style.display = '';
+    statusEl.textContent = '';
+  } catch (err) {
+    console.error(err);
+    statusEl.textContent = 'Error: ' + err.message;
+  } finally {
+    fileInput.value = '';
+  }
+});
+
+// ----- Tab switching -----
+const tabButtons = document.querySelectorAll('.tab-btn');
+const tabPanels  = document.querySelectorAll('.tab-panel');
+tabButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const target = btn.dataset.tab;
+    tabButtons.forEach(b => b.classList.toggle('active', b === btn));
+    tabPanels.forEach(p => p.classList.toggle('hidden', p.id !== 'tab-' + target));
+  });
+});
+
+// ----- Structure explorer -----
+const explorerImportBtn = document.getElementById('explorerImportBtn');
+const explorerFileInput = document.getElementById('explorerFileInput');
+const explorerStatusEl  = document.getElementById('explorerStatus');
+const explorerResultsEl = document.getElementById('explorerResults');
+const expandAllBtn      = document.getElementById('expandAllBtn');
+const collapseAllBtn    = document.getElementById('collapseAllBtn');
+
+explorerImportBtn.addEventListener('click', () => explorerFileInput.click());
+
+function setAllDetails(open) {
+  for (const d of explorerResultsEl.querySelectorAll('details')) d.open = open;
+}
+expandAllBtn.addEventListener('click', () => setAllDetails(true));
+collapseAllBtn.addEventListener('click', () => setAllDetails(false));
+
+// Yield to the event loop so the status text can paint before the
+// (potentially long) parse blocks the main thread.
+const yieldToUI = () => new Promise(r => setTimeout(r, 0));
+
+explorerFileInput.addEventListener('change', async () => {
+  const file = explorerFileInput.files[0];
+  if (!file) return;
+  explorerResultsEl.replaceChildren();
+  explorerStatusEl.textContent = 'Reading save…';
+  try {
+    const buf = await file.arrayBuffer();
+    explorerStatusEl.textContent = 'Unzipping…';
+    const zip = await JSZip.loadAsync(buf);
+    const gamestateFile = zip.file('gamestate');
+    if (!gamestateFile) throw new Error("Save is missing the 'gamestate' entry");
+
+    explorerStatusEl.textContent = 'Reading gamestate…';
+    const gamestateText = await gamestateFile.async('string');
+
+    explorerStatusEl.textContent = 'Building structure (this may take a moment)…';
+    await yieldToUI();
+
+    const t0 = performance.now();
+    const rootShape = new PdxStructureParser(gamestateText).parseObjectShape();
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+
+    explorerStatusEl.textContent = 'Rendering…';
+    await yieldToUI();
+    explorerResultsEl.replaceChildren(renderShape('gamestate', rootShape, true));
+    expandAllBtn.disabled = false;
+    collapseAllBtn.disabled = false;
+    explorerStatusEl.textContent = 'Structure built in ' + elapsed + 's';
+  } catch (err) {
+    console.error(err);
+    explorerStatusEl.textContent = 'Error: ' + err.message;
+  } finally {
+    explorerFileInput.value = '';
+  }
+});
+</script>
+</body>
+</html>
