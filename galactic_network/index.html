@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>Galactic Network</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: #0b0e14; color: #d6dbe5; }
@@ -86,7 +87,7 @@
       <div style="margin-top:8px" class="toolbar">
         <button id="exportBtn">Export JSON</button>
         <button id="importBtn">Import JSON</button>
-        <button id="importGsBtn">Import Gamestate</button>
+        <button id="importGsBtn">Import Save</button>
         <button id="fitBtn">Fit View</button>
         <button id="clearBtn" class="danger">Clear All</button>
       </div>
@@ -1062,46 +1063,56 @@
     draw();
   }
 
+  function processGamestateText(text) {
+    let objects;
+    try {
+      objects = parseGamestate(text);
+    } catch (e) {
+      $('status').textContent = 'Parse failed';
+      alert('Parse error: ' + e.message);
+      return;
+    }
+    if (!objects.length) {
+      $('status').textContent = 'No galactic_object entries found';
+      alert('No galactic_object entries were found in the file.');
+      return;
+    }
+    const built = buildNetworkFromGamestate(objects);
+    if (!confirm(`Parsed ${objects.length} systems with ${built.edgeCount} hyperlanes.\n\nThis will REPLACE the current network. Continue?`)) {
+      $('status').textContent = 'Import cancelled';
+      return;
+    }
+    state.nodes = built.nodes;
+    state.nextId = built.nextId;
+    state.selectedId = null;
+    state.pathFromId = null;
+    save();
+    setMode('selection');
+    fitToView();
+    $('status').textContent = `Imported ${objects.length} systems, ${built.edgeCount} hyperlanes — pick which to include`;
+  }
+
   $('importGsBtn').onclick = () => {
     const inp = document.createElement('input');
     inp.type = 'file';
-    inp.onchange = () => {
+    inp.accept = '.sav';
+    inp.onchange = async () => {
       const f = inp.files[0]; if (!f) return;
       $('status').textContent = `Reading ${f.name}...`;
-      const r = new FileReader();
-      r.onload = () => {
+      try {
+        const buf = await f.arrayBuffer();
+        $('status').textContent = 'Unzipping save...';
+        const zip = await JSZip.loadAsync(buf);
+        const gamestateFile = zip.file('gamestate');
+        if (!gamestateFile) throw new Error("Save is missing the 'gamestate' entry");
+        $('status').textContent = 'Extracting gamestate...';
+        const text = await gamestateFile.async('string');
         $('status').textContent = 'Parsing gamestate...';
-        setTimeout(() => {
-          let objects;
-          try {
-            objects = parseGamestate(r.result);
-          } catch (e) {
-            $('status').textContent = 'Parse failed';
-            alert('Parse error: ' + e.message);
-            return;
-          }
-          if (!objects.length) {
-            $('status').textContent = 'No galactic_object entries found';
-            alert('No galactic_object entries were found in the file.');
-            return;
-          }
-          const built = buildNetworkFromGamestate(objects);
-          if (!confirm(`Parsed ${objects.length} systems with ${built.edgeCount} hyperlanes.\n\nThis will REPLACE the current network. Continue?`)) {
-            $('status').textContent = 'Import cancelled';
-            return;
-          }
-          state.nodes = built.nodes;
-          state.nextId = built.nextId;
-          state.selectedId = null;
-          state.pathFromId = null;
-          save();
-          setMode('selection');
-          fitToView();
-          $('status').textContent = `Imported ${objects.length} systems, ${built.edgeCount} hyperlanes — pick which to include`;
-        }, 10);
-      };
-      r.onerror = () => { $('status').textContent = 'Read failed'; alert('Failed to read file.'); };
-      r.readAsText(f);
+        setTimeout(() => processGamestateText(text), 10);
+      } catch (e) {
+        $('status').textContent = 'Read failed';
+        alert('Failed to read save: ' + e.message);
+      }
     };
     inp.click();
   };
