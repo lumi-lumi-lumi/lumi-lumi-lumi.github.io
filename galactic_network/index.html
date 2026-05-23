@@ -1,1 +1,1137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Galactic Network</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: #0b0e14; color: #d6dbe5; }
+  #app { display: flex; height: 100vh; }
+  #canvasWrap { flex: 1; position: relative; overflow: hidden; background: radial-gradient(ellipse at center, #1a2030 0%, #0b0e14 70%); }
+  canvas { display: block; width: 100%; height: 100%; cursor: default; }
+  #sidebar { width: 340px; background: #131823; border-left: 1px solid #2a3142; overflow-y: auto; display: flex; flex-direction: column; }
+  .section { padding: 12px 14px; border-bottom: 1px solid #2a3142; }
+  .section h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: #8a96b0; font-weight: 600; }
+  .toolbar { display: flex; gap: 6px; flex-wrap: wrap; }
+  button { background: #1f2a3d; color: #d6dbe5; border: 1px solid #2a3a55; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+  button:hover { background: #2a3a55; }
+  button.active { background: #3b6ea8; border-color: #4d8bd1; }
+  button.danger { background: #5a2424; border-color: #8a3838; }
+  button.danger:hover { background: #7a3030; }
+  label { font-size: 12px; color: #a8b3c7; display: block; margin: 6px 0 2px; }
+  input[type=text], input[type=number] { width: 100%; background: #0f1420; color: #d6dbe5; border: 1px solid #2a3a55; padding: 5px 7px; border-radius: 3px; font-size: 12px; }
+  input[type=number] { width: 80px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > * { flex: 1; }
+  .nodeList { max-height: 180px; overflow-y: auto; border: 1px solid #2a3142; border-radius: 3px; background: #0f1420; }
+  .nodeRow { padding: 4px 8px; cursor: pointer; font-size: 12px; display: flex; justify-content: space-between; }
+  .nodeRow:hover { background: #1f2a3d; }
+  .nodeRow.selected { background: #2a4a72; }
+  .edgeList { max-height: 200px; overflow-y: auto; border: 1px solid #2a3142; border-radius: 3px; background: #0f1420; padding: 4px; }
+  .edgeRow { display: flex; align-items: center; gap: 6px; padding: 3px 4px; font-size: 12px; }
+  .edgeRow input[type=checkbox] { margin: 0; }
+  .edgeRow .name { flex: 1; }
+  .edgeRow input[type=number] { width: 60px; padding: 2px 4px; font-size: 11px; }
+  .small { font-size: 11px; color: #6f7a90; }
+  #status { position: absolute; top: 8px; left: 12px; font-size: 12px; color: #8a96b0; background: rgba(15,20,32,0.85); padding: 4px 10px; border-radius: 4px; pointer-events: none; }
+  #legend { position: absolute; bottom: 8px; left: 12px; font-size: 11px; color: #8a96b0; background: rgba(15,20,32,0.85); padding: 6px 10px; border-radius: 4px; pointer-events: none; max-width: 320px; }
+  details summary { cursor: pointer; font-size: 12px; color: #a8b3c7; padding: 2px 0; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="canvasWrap">
+    <canvas id="cv"></canvas>
+    <div id="status">Ready</div>
+    <div id="legend"></div>
+  </div>
+  <div id="sidebar">
+    <div class="section">
+      <h3>Tools</h3>
+      <div class="toolbar">
+        <button id="modeSelect" class="active">Select</button>
+        <button id="modeAdd">Add Node</button>
+        <button id="modePath">Shortest Path</button>
+        <button id="modeSelection">Selection</button>
+      </div>
+      <div class="small" style="margin-top:6px" id="modeHint">Click a node to select. Drag to move.</div>
+      <div id="selSubToolbar" style="display:none; margin-top:8px; padding-top:8px; border-top:1px solid #2a3142">
+        <div class="toolbar">
+          <button id="selSubClick" class="active">Click</button>
+          <button id="selSubRect">Rectangle</button>
+          <button id="selSubLasso">Lasso</button>
+        </div>
+        <div class="toolbar" style="margin-top:6px">
+          <button id="selShowAll">Show All</button>
+          <button id="selHideAll">Hide All</button>
+          <button id="selInvert">Invert</button>
+        </div>
+        <div class="small" style="margin-top:6px" id="selCounts"></div>
+        <div class="small" style="margin-top:4px; color:#6f7a90">Drag: show enclosed. Alt+drag: hide enclosed. Middle-click drag: pan.</div>
+      </div>
+    </div>
 
+    <div class="section">
+      <h3>Settings</h3>
+      <label>Default neighbor travel time</label>
+      <input type="number" id="defNeighbor" min="0" step="0.1" value="1">
+      <label>Default shortcut travel time</label>
+      <input type="number" id="defShortcut" min="0" step="0.1" value="0.5">
+    </div>
+
+    <div class="section">
+      <h3>Nodes</h3>
+      <input type="text" id="nodeSearch" placeholder="Search..." style="margin-bottom:4px">
+      <div class="nodeList" id="nodeList"></div>
+      <div style="margin-top:8px" class="toolbar">
+        <button id="exportBtn">Export JSON</button>
+        <button id="importBtn">Import JSON</button>
+        <button id="importGsBtn">Import Gamestate</button>
+        <button id="fitBtn">Fit View</button>
+        <button id="clearBtn" class="danger">Clear All</button>
+      </div>
+    </div>
+
+    <div class="section" id="editorSection" style="display:none">
+      <h3>Selected Node</h3>
+      <label>Name</label>
+      <input type="text" id="nName">
+      <div class="row">
+        <div><label>X</label><input type="number" id="nX" step="1"></div>
+        <div><label>Y</label><input type="number" id="nY" step="1"></div>
+      </div>
+      <details open style="margin-top:8px">
+        <summary>Neighbors</summary>
+        <input type="text" id="neighborSearch" placeholder="Search..." style="margin-top:4px">
+        <div class="edgeList" id="neighborList" style="margin-top:4px"></div>
+      </details>
+      <details style="margin-top:6px">
+        <summary>Shortcuts</summary>
+        <input type="text" id="shortcutSearch" placeholder="Search..." style="margin-top:4px">
+        <div class="edgeList" id="shortcutList" style="margin-top:4px"></div>
+      </details>
+      <button id="deleteNode" class="danger" style="margin-top:10px; width:100%">Delete Node</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ---------- State ----------
+  const state = {
+    nodes: {}, // id -> {id, name, x, y, neighbors: {otherId: time|null}, shortcuts: {otherId: time|null}, shortcutsExpanded: bool}
+    nextId: 1,
+    defNeighborTime: 1,
+    defShortcutTime: 0.5,
+    mode: 'select', // select | add | path
+    selectedId: null,
+    pathFromId: null,
+    pan: { x: 0, y: 0 },
+    zoom: 1,
+    dragging: null,
+    panning: null,
+    selSub: 'click', // 'click' | 'rect' | 'lasso'
+    selDrag: null, // { type, points, altKey }
+    pendingClick: null,
+  };
+
+  const STORAGE_KEY = 'galactic_network_v1';
+
+  function save() {
+    const data = {
+      nodes: state.nodes,
+      nextId: state.nextId,
+      defNeighborTime: state.defNeighborTime,
+      defShortcutTime: state.defShortcutTime,
+    };
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
+  }
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) { seedExample(); return; }
+      const data = JSON.parse(raw);
+      state.nodes = data.nodes || {};
+      state.nextId = data.nextId || 1;
+      state.defNeighborTime = data.defNeighborTime ?? 1;
+      state.defShortcutTime = data.defShortcutTime ?? 0.5;
+      for (const id in state.nodes) {
+        if (typeof state.nodes[id].hidden !== 'boolean') state.nodes[id].hidden = false;
+      }
+    } catch (e) { seedExample(); }
+  }
+
+  function seedExample() {
+    // Simple sample network
+    const mk = (name, x, y) => {
+      const id = String(state.nextId++);
+      state.nodes[id] = { id, name, x, y, neighbors: {}, shortcuts: {}, shortcutsExpanded: false, hidden: false };
+      return id;
+    };
+    const a = mk('Sol', 0, 0);
+    const b = mk('Alpha', 180, -60);
+    const c = mk('Vega', 200, 120);
+    const d = mk('Lyra', -160, 80);
+    const e = mk('Orion', -40, 220);
+    connect(a, b, 'neighbors');
+    connect(a, c, 'neighbors');
+    connect(a, d, 'neighbors');
+    connect(b, c, 'neighbors');
+    connect(c, e, 'neighbors');
+    connect(d, e, 'neighbors');
+    connect(b, d, 'shortcuts');
+  }
+
+  function connect(aId, bId, type) {
+    state.nodes[aId][type][bId] = null;
+    state.nodes[bId][type][aId] = null;
+  }
+  function disconnect(aId, bId, type) {
+    delete state.nodes[aId][type][bId];
+    delete state.nodes[bId][type][aId];
+  }
+  function setEdgeTime(aId, bId, type, time) {
+    state.nodes[aId][type][bId] = time;
+    state.nodes[bId][type][aId] = time;
+  }
+
+  function edgeTime(a, b, type) {
+    if (!state.nodes[a] || !state.nodes[b]) return null;
+    const t = state.nodes[a][type][b];
+    if (t === undefined) return null;
+    if (t === null || t === '') return type === 'neighbors' ? state.defNeighborTime : state.defShortcutTime;
+    return Number(t);
+  }
+
+  // ---------- Canvas ----------
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = cv.clientWidth, h = cv.clientHeight;
+    cv.width = w * dpr; cv.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    draw();
+  }
+  window.addEventListener('resize', resize);
+
+  function worldToScreen(x, y) {
+    return {
+      x: cv.clientWidth / 2 + state.pan.x + x * state.zoom,
+      y: cv.clientHeight / 2 + state.pan.y + y * state.zoom,
+    };
+  }
+  function screenToWorld(sx, sy) {
+    return {
+      x: (sx - cv.clientWidth / 2 - state.pan.x) / state.zoom,
+      y: (sy - cv.clientHeight / 2 - state.pan.y) / state.zoom,
+    };
+  }
+
+  // ---------- Shortest Path ----------
+  function dijkstra(fromId) {
+    const dist = {};
+    for (const id in state.nodes) {
+      if (state.nodes[id].hidden) continue;
+      dist[id] = Infinity;
+    }
+    if (!(fromId in dist)) return dist;
+    dist[fromId] = 0;
+    const visited = new Set();
+    const queue = new Set(Object.keys(dist));
+    while (queue.size) {
+      let u = null, best = Infinity;
+      for (const id of queue) {
+        if (dist[id] < best) { best = dist[id]; u = id; }
+      }
+      if (u === null) break;
+      queue.delete(u);
+      visited.add(u);
+      const node = state.nodes[u];
+      const all = { ...node.neighbors, ...node.shortcuts };
+      for (const v in all) {
+        if (!state.nodes[v] || state.nodes[v].hidden) continue;
+        // pick min if same edge defined in both (rare)
+        let w = Infinity;
+        if (v in node.neighbors) w = Math.min(w, edgeTime(u, v, 'neighbors'));
+        if (v in node.shortcuts) w = Math.min(w, edgeTime(u, v, 'shortcuts'));
+        const nd = dist[u] + w;
+        if (nd < dist[v]) dist[v] = nd;
+      }
+    }
+    return dist;
+  }
+
+  function colorForRatio(r) {
+    // 0 = green, 1 = red
+    r = Math.max(0, Math.min(1, r));
+    const hue = 120 * (1 - r);
+    return `hsl(${hue}, 75%, 55%)`;
+  }
+
+  // ---------- Drawing ----------
+  const NODE_R = 10;
+  const ICON_OFFSET = 22;
+
+  function isVisibleForInteract(n) {
+    return state.mode === 'selection' || !n.hidden;
+  }
+  function nodeAtScreen(sx, sy) {
+    for (const id in state.nodes) {
+      const n = state.nodes[id];
+      if (!isVisibleForInteract(n)) continue;
+      const p = worldToScreen(n.x, n.y);
+      if (Math.hypot(p.x - sx, p.y - sy) <= NODE_R + 3) return id;
+    }
+    return null;
+  }
+  function shortcutIconAtScreen(sx, sy) {
+    if (state.mode === 'selection') return null;
+    for (const id in state.nodes) {
+      const n = state.nodes[id];
+      if (n.hidden) continue;
+      if (!Object.keys(n.shortcuts).length) continue;
+      const p = worldToScreen(n.x, n.y);
+      const ix = p.x, iy = p.y - ICON_OFFSET;
+      if (Math.hypot(ix - sx, iy - sy) <= 10) return id;
+    }
+    return null;
+  }
+  function pointInPolygon(px, py, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
+      const intersect = ((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / ((yj - yi) || 1e-9) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
+  function draw() {
+    const w = cv.clientWidth, h = cv.clientHeight;
+    ctx.clearRect(0, 0, w, h);
+
+    const inSel = state.mode === 'selection';
+
+    let dist = null, maxFinite = 0;
+    if (state.mode === 'path' && state.pathFromId && state.nodes[state.pathFromId] && !state.nodes[state.pathFromId].hidden) {
+      dist = dijkstra(state.pathFromId);
+      for (const id in dist) if (isFinite(dist[id])) maxFinite = Math.max(maxFinite, dist[id]);
+    }
+
+    const colorOf = (id) => {
+      if (!dist) return null;
+      const d = dist[id];
+      if (d === undefined || !isFinite(d)) return '#555a66';
+      if (maxFinite === 0) return colorForRatio(0);
+      return colorForRatio(d / maxFinite);
+    };
+
+    const edgeAllowed = (a, b) => {
+      if (inSel) return true;
+      return !a.hidden && !b.hidden;
+    };
+    const edgeFaded = (a, b) => inSel && (a.hidden || b.hidden);
+
+    // Draw neighbor edges
+    const drawn = new Set();
+    for (const id in state.nodes) {
+      const n = state.nodes[id];
+      const a = worldToScreen(n.x, n.y);
+      for (const oid in n.neighbors) {
+        const o = state.nodes[oid]; if (!o) continue;
+        const key = id < oid ? id + '|' + oid : oid + '|' + id;
+        if (drawn.has(key)) continue;
+        drawn.add(key);
+        if (!edgeAllowed(n, o)) continue;
+        const b = worldToScreen(o.x, o.y);
+        let stroke = '#4a5775';
+        if (dist && !n.hidden && !o.hidden) {
+          const cA = colorOf(id), cB = colorOf(oid);
+          if (isFinite(dist[id]) && isFinite(dist[oid])) {
+            const grad = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
+            grad.addColorStop(0, cA); grad.addColorStop(1, cB);
+            stroke = grad;
+          }
+        }
+        ctx.save();
+        if (edgeFaded(n, o)) ctx.globalAlpha = 0.18;
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // Draw shortcut edges (only for expanded nodes)
+    if (!inSel) {
+      const drawnSc = new Set();
+      for (const id in state.nodes) {
+        const n = state.nodes[id];
+        if (n.hidden) continue;
+        if (!n.shortcutsExpanded) continue;
+        const a = worldToScreen(n.x, n.y);
+        for (const oid in n.shortcuts) {
+          const o = state.nodes[oid]; if (!o || o.hidden) continue;
+          const key = id < oid ? id + '|' + oid : oid + '|' + id;
+          if (drawnSc.has(key)) continue;
+          drawnSc.add(key);
+          const b = worldToScreen(o.x, o.y);
+          ctx.save();
+          ctx.setLineDash([6, 4]);
+          ctx.strokeStyle = '#d18bff';
+          ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+          ctx.restore();
+        }
+      }
+    }
+
+    // Draw nodes
+    for (const id in state.nodes) {
+      const n = state.nodes[id];
+      if (!inSel && n.hidden) continue;
+      const p = worldToScreen(n.x, n.y);
+      const faded = inSel && n.hidden;
+
+      let fill = '#7da8e0';
+      if (faded) fill = '#3a414f';
+      else if (dist) fill = colorOf(id);
+
+      ctx.save();
+      if (faded) ctx.globalAlpha = 0.6;
+
+      if (id === state.selectedId && !inSel) {
+        ctx.beginPath(); ctx.arc(p.x, p.y, NODE_R + 4, 0, Math.PI*2);
+        ctx.strokeStyle = '#ffd76b'; ctx.lineWidth = 2; ctx.stroke();
+      }
+      if (state.mode === 'path' && id === state.pathFromId) {
+        ctx.beginPath(); ctx.arc(p.x, p.y, NODE_R + 6, 0, Math.PI*2);
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
+      }
+      ctx.beginPath(); ctx.arc(p.x, p.y, NODE_R, 0, Math.PI*2);
+      ctx.fillStyle = fill; ctx.fill();
+      ctx.strokeStyle = faded ? '#1a1f2c' : '#0b0e14'; ctx.lineWidth = 1.5; ctx.stroke();
+
+      // Label
+      ctx.font = '12px -apple-system, Segoe UI, Roboto, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      const label = n.name;
+      const m = ctx.measureText(label);
+      ctx.fillStyle = 'rgba(11,14,20,0.7)';
+      ctx.fillRect(p.x - m.width/2 - 3, p.y + NODE_R + 3, m.width + 6, 16);
+      ctx.fillStyle = faded ? '#6b7280' : '#e6ebf5';
+      ctx.fillText(label, p.x, p.y + NODE_R + 4);
+
+      if (dist && !n.hidden) {
+        const d = dist[id];
+        const txt = isFinite(d) ? d.toFixed(2).replace(/\.?0+$/, '') : '∞';
+        ctx.font = 'bold 12px monospace';
+        const tm = ctx.measureText(txt);
+        const ty = p.y - NODE_R - 18;
+        ctx.fillStyle = 'rgba(11,14,20,0.85)';
+        ctx.fillRect(p.x - tm.width/2 - 4, ty - 2, tm.width + 8, 16);
+        ctx.fillStyle = isFinite(d) ? '#fff' : '#888';
+        ctx.textBaseline = 'top';
+        ctx.fillText(txt, p.x, ty);
+      }
+
+      if (!inSel && Object.keys(n.shortcuts).length > 0) {
+        const ix = p.x, iy = p.y - ICON_OFFSET;
+        ctx.beginPath(); ctx.arc(ix, iy, 9, 0, Math.PI*2);
+        ctx.fillStyle = n.shortcutsExpanded ? '#d18bff' : '#3a2a4a';
+        ctx.fill();
+        ctx.strokeStyle = '#d18bff'; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.fillStyle = n.shortcutsExpanded ? '#1a0a26' : '#d18bff';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('★', ix, iy + 1);
+      }
+      ctx.restore();
+    }
+
+    // Selection-drag overlay
+    if (inSel && state.selDrag) {
+      ctx.save();
+      ctx.strokeStyle = state.selDrag.altKey ? '#e07070' : '#7dd6a8';
+      ctx.fillStyle = state.selDrag.altKey ? 'rgba(224,112,112,0.12)' : 'rgba(125,214,168,0.12)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 4]);
+      if (state.selDrag.type === 'rect') {
+        const a = state.selDrag.points[0], b = state.selDrag.points[1];
+        const rx = Math.min(a.x, b.x), ry = Math.min(a.y, b.y);
+        const rw = Math.abs(a.x - b.x), rh = Math.abs(a.y - b.y);
+        ctx.fillRect(rx, ry, rw, rh);
+        ctx.strokeRect(rx, ry, rw, rh);
+      } else {
+        const pts = state.selDrag.points;
+        if (pts.length > 1) {
+          ctx.beginPath();
+          ctx.moveTo(pts[0].x, pts[0].y);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+  }
+
+  // ---------- Interaction ----------
+  const DRAG_THRESHOLD = 4;
+
+  cv.addEventListener('mousedown', (e) => {
+    if (e.button !== 0 && e.button !== 1) return;
+    const rect = cv.getBoundingClientRect();
+    const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+    const useRegionSelect = state.mode === 'selection' && e.button === 0 && state.selSub !== 'click';
+    state.pendingClick = {
+      x: sx, y: sy,
+      px: state.pan.x, py: state.pan.y,
+      panning: false,
+      regionSelect: useRegionSelect,
+      altKey: e.altKey,
+      forcePan: e.button === 1,
+    };
+  });
+
+  cv.addEventListener('mousemove', (e) => {
+    const rect = cv.getBoundingClientRect();
+    const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+    const pc = state.pendingClick;
+    if (pc) {
+      const moved = Math.hypot(sx - pc.x, sy - pc.y) > DRAG_THRESHOLD;
+      if (pc.regionSelect) {
+        if (!state.selDrag && (pc.forcePan ? false : moved)) {
+          state.selDrag = {
+            type: state.selSub,
+            points: state.selSub === 'rect' ? [{x:pc.x,y:pc.y},{x:sx,y:sy}] : [{x:pc.x,y:pc.y}],
+            altKey: pc.altKey,
+          };
+        }
+        if (state.selDrag) {
+          if (state.selDrag.type === 'rect') state.selDrag.points[1] = {x:sx, y:sy};
+          else state.selDrag.points.push({x:sx, y:sy});
+          draw();
+          return;
+        }
+      }
+      if (!pc.panning && (pc.forcePan || moved)) {
+        pc.panning = true;
+        cv.style.cursor = 'grabbing';
+      }
+      if (pc.panning) {
+        state.pan.x = pc.px + (sx - pc.x);
+        state.pan.y = pc.py + (sy - pc.y);
+        draw();
+        return;
+      }
+    }
+    const hover = shortcutIconAtScreen(sx, sy) || nodeAtScreen(sx, sy);
+    cv.style.cursor = hover ? 'pointer' : (state.mode === 'add' ? 'crosshair' : 'grab');
+  });
+
+  window.addEventListener('mouseup', (e) => {
+    const pc = state.pendingClick;
+    state.pendingClick = null;
+
+    if (state.selDrag) {
+      const drag = state.selDrag;
+      state.selDrag = null;
+      const targetHidden = drag.altKey ? true : false;
+      let changed = 0;
+      for (const id in state.nodes) {
+        const n = state.nodes[id];
+        const p = worldToScreen(n.x, n.y);
+        let inside = false;
+        if (drag.type === 'rect') {
+          const a = drag.points[0], b = drag.points[1];
+          const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x);
+          const y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
+          inside = p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1;
+        } else if (drag.points.length >= 3) {
+          inside = pointInPolygon(p.x, p.y, drag.points);
+        }
+        if (inside && n.hidden !== targetHidden) {
+          n.hidden = targetHidden;
+          changed++;
+        }
+      }
+      if (changed) { save(); renderNodeList(); renderEditor(); updateSelCounts(); }
+      draw();
+      cv.style.cursor = 'default';
+      return;
+    }
+
+    if (!pc) return;
+    if (pc.panning) { cv.style.cursor = 'default'; return; }
+    if (pc.forcePan) return;
+
+    const rect = cv.getBoundingClientRect();
+    const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+    if (sx < 0 || sy < 0 || sx > cv.clientWidth || sy > cv.clientHeight) return;
+
+    if (state.mode === 'selection') {
+      const hitId = nodeAtScreen(sx, sy);
+      if (hitId) {
+        state.nodes[hitId].hidden = !state.nodes[hitId].hidden;
+        save(); updateSelCounts(); draw();
+      }
+      return;
+    }
+
+    const iconId = shortcutIconAtScreen(sx, sy);
+    if (iconId) {
+      state.nodes[iconId].shortcutsExpanded = !state.nodes[iconId].shortcutsExpanded;
+      save(); draw();
+      return;
+    }
+    const hitId = nodeAtScreen(sx, sy);
+
+    if (state.mode === 'add') {
+      if (hitId) {
+        selectNode(hitId);
+      } else {
+        const w = screenToWorld(sx, sy);
+        const id = String(state.nextId++);
+        state.nodes[id] = { id, name: 'Node ' + id, x: Math.round(w.x), y: Math.round(w.y), neighbors: {}, shortcuts: {}, shortcutsExpanded: false, hidden: false };
+        selectNode(id);
+        save(); renderNodeList(); draw();
+      }
+      return;
+    }
+
+    if (state.mode === 'path') {
+      if (hitId) {
+        state.pathFromId = hitId;
+        selectNode(hitId);
+        updateLegend();
+        draw();
+      }
+      return;
+    }
+
+    if (hitId) selectNode(hitId);
+    else selectNode(null);
+  });
+
+  const keysDown = new Set();
+  let panRaf = null, lastPanTs = 0;
+  const PAN_SPEED = 600; // px per second
+
+  function panLoop(ts) {
+    if (!keysDown.size) { panRaf = null; return; }
+    const dt = lastPanTs ? Math.min(0.05, (ts - lastPanTs) / 1000) : 0.016;
+    lastPanTs = ts;
+    const step = PAN_SPEED * dt;
+    let dx = 0, dy = 0;
+    if (keysDown.has('w')) dy += step;
+    if (keysDown.has('s')) dy -= step;
+    if (keysDown.has('a')) dx += step;
+    if (keysDown.has('d')) dx -= step;
+    if (dx || dy) { state.pan.x += dx; state.pan.y += dy; draw(); }
+    panRaf = requestAnimationFrame(panLoop);
+  }
+
+  function isTypingTarget(el) {
+    if (!el) return false;
+    const tag = el.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (isTypingTarget(document.activeElement)) return;
+    const k = e.key.toLowerCase();
+    if (k !== 'w' && k !== 'a' && k !== 's' && k !== 'd') return;
+    e.preventDefault();
+    if (!keysDown.has(k)) {
+      keysDown.add(k);
+      if (!panRaf) { lastPanTs = 0; panRaf = requestAnimationFrame(panLoop); }
+    }
+  });
+  window.addEventListener('keyup', (e) => {
+    const k = e.key.toLowerCase();
+    if (keysDown.delete(k) && !keysDown.size) lastPanTs = 0;
+  });
+  window.addEventListener('blur', () => { keysDown.clear(); lastPanTs = 0; });
+
+  cv.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const rect = cv.getBoundingClientRect();
+    const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+    const before = screenToWorld(sx, sy);
+    const factor = e.deltaY < 0 ? 1.15 : 1/1.15;
+    state.zoom = Math.max(0.1, Math.min(5, state.zoom * factor));
+    const after = screenToWorld(sx, sy);
+    state.pan.x += (after.x - before.x) * state.zoom;
+    state.pan.y += (after.y - before.y) * state.zoom;
+    draw();
+  }, { passive: false });
+
+  // ---------- Sidebar ----------
+  const $ = (id) => document.getElementById(id);
+
+  function setMode(m) {
+    state.mode = m;
+    state.selDrag = null;
+    $('modeSelect').classList.toggle('active', m === 'select');
+    $('modeAdd').classList.toggle('active', m === 'add');
+    $('modePath').classList.toggle('active', m === 'path');
+    $('modeSelection').classList.toggle('active', m === 'selection');
+    const hint = {
+      select: 'Click a node to select. Drag empty space to pan.',
+      add: 'Click empty space to add a node. Click a node to select.',
+      path: 'Click a node to compute shortest travel time to all others.',
+      selection: 'Toggle which systems are visible on the map.',
+    }[m];
+    $('modeHint').textContent = hint;
+    $('selSubToolbar').style.display = m === 'selection' ? '' : 'none';
+    if (m !== 'path') { state.pathFromId = null; updateLegend(); }
+    if (m === 'selection') { selectNode(null); updateSelCounts(); }
+    renderNodeList(); renderEditor();
+    draw();
+  }
+  $('modeSelect').onclick = () => setMode('select');
+  $('modeAdd').onclick = () => setMode('add');
+  $('modePath').onclick = () => setMode('path');
+  $('modeSelection').onclick = () => setMode('selection');
+
+  function setSelSub(s) {
+    state.selSub = s;
+    $('selSubClick').classList.toggle('active', s === 'click');
+    $('selSubRect').classList.toggle('active', s === 'rect');
+    $('selSubLasso').classList.toggle('active', s === 'lasso');
+  }
+  $('selSubClick').onclick = () => setSelSub('click');
+  $('selSubRect').onclick = () => setSelSub('rect');
+  $('selSubLasso').onclick = () => setSelSub('lasso');
+
+  $('selShowAll').onclick = () => { for (const id in state.nodes) state.nodes[id].hidden = false; save(); updateSelCounts(); draw(); };
+  $('selHideAll').onclick = () => { for (const id in state.nodes) state.nodes[id].hidden = true; save(); updateSelCounts(); draw(); };
+  $('selInvert').onclick = () => { for (const id in state.nodes) state.nodes[id].hidden = !state.nodes[id].hidden; save(); updateSelCounts(); draw(); };
+
+  function updateSelCounts() {
+    let v = 0, h = 0;
+    for (const id in state.nodes) (state.nodes[id].hidden ? h++ : v++);
+    $('selCounts').textContent = `${v} visible · ${h} hidden`;
+  }
+
+  $('defNeighbor').oninput = (e) => { state.defNeighborTime = Number(e.target.value) || 0; save(); draw(); };
+  $('defShortcut').oninput = (e) => { state.defShortcutTime = Number(e.target.value) || 0; save(); draw(); };
+
+  function selectNode(id) {
+    state.selectedId = id;
+    renderEditor();
+    renderNodeList();
+    draw();
+  }
+
+  function renderNodeList() {
+    const list = $('nodeList');
+    list.innerHTML = '';
+    const q = ($('nodeSearch').value || '').trim().toLowerCase();
+    let ids = Object.keys(state.nodes).filter(i => !state.nodes[i].hidden);
+    if (q) ids = ids.filter(i => state.nodes[i].name.toLowerCase().includes(q));
+    ids.sort((a,b) => state.nodes[a].name.localeCompare(state.nodes[b].name));
+    for (const id of ids) {
+      const n = state.nodes[id];
+      const row = document.createElement('div');
+      row.className = 'nodeRow' + (id === state.selectedId ? ' selected' : '');
+      row.innerHTML = `<span>${escapeHtml(n.name)}</span><span class="small">${Object.keys(n.neighbors).length}n ${Object.keys(n.shortcuts).length}s</span>`;
+      row.onclick = () => selectNode(id);
+      list.appendChild(row);
+    }
+  }
+
+  function updateEditorPosition() {
+    const n = state.nodes[state.selectedId];
+    if (!n) return;
+    $('nX').value = n.x; $('nY').value = n.y;
+  }
+
+  function renderEditor() {
+    const sec = $('editorSection');
+    if (!state.selectedId || !state.nodes[state.selectedId]) { sec.style.display = 'none'; return; }
+    sec.style.display = '';
+    const n = state.nodes[state.selectedId];
+    $('nName').value = n.name;
+    $('nX').value = n.x;
+    $('nY').value = n.y;
+    renderEdgeList('neighborList', 'neighbors');
+    renderEdgeList('shortcutList', 'shortcuts');
+  }
+
+  function renderEdgeList(elId, type) {
+    const el = $(elId);
+    el.innerHTML = '';
+    const me = state.nodes[state.selectedId];
+    const searchId = type === 'neighbors' ? 'neighborSearch' : 'shortcutSearch';
+    const q = ($(searchId).value || '').trim().toLowerCase();
+    let ids = Object.keys(state.nodes).filter(i => i !== me.id && !state.nodes[i].hidden);
+    if (q) ids = ids.filter(i => state.nodes[i].name.toLowerCase().includes(q));
+    ids.sort((a,b) => {
+      const ca = a in me[type] ? 0 : 1;
+      const cb = b in me[type] ? 0 : 1;
+      if (ca !== cb) return ca - cb;
+      return state.nodes[a].name.localeCompare(state.nodes[b].name);
+    });
+    if (!ids.length) { el.innerHTML = '<div class="small" style="padding:4px">No matching nodes.</div>'; return; }
+    for (const oid of ids) {
+      const o = state.nodes[oid];
+      const connected = oid in me[type];
+      const t = me[type][oid];
+      const row = document.createElement('div');
+      row.className = 'edgeRow';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.checked = connected;
+      cb.onchange = () => {
+        if (cb.checked) connect(me.id, oid, type);
+        else disconnect(me.id, oid, type);
+        save(); renderEdgeList(elId, type); renderNodeList(); draw();
+      };
+      const name = document.createElement('span');
+      name.className = 'name'; name.textContent = o.name;
+      const tinput = document.createElement('input');
+      tinput.type = 'number'; tinput.min = 0; tinput.step = 0.1;
+      tinput.placeholder = (type === 'neighbors' ? state.defNeighborTime : state.defShortcutTime);
+      tinput.value = (t === null || t === undefined) ? '' : t;
+      tinput.disabled = !connected;
+      tinput.oninput = () => {
+        const v = tinput.value === '' ? null : Number(tinput.value);
+        setEdgeTime(me.id, oid, type, v);
+        save(); draw();
+      };
+      row.appendChild(cb); row.appendChild(name); row.appendChild(tinput);
+      el.appendChild(row);
+    }
+  }
+
+  $('nName').oninput = (e) => {
+    const n = state.nodes[state.selectedId]; if (!n) return;
+    n.name = e.target.value; save(); renderNodeList(); draw();
+  };
+  $('nX').oninput = (e) => {
+    const n = state.nodes[state.selectedId]; if (!n) return;
+    n.x = Number(e.target.value) || 0; save(); draw();
+  };
+  $('nY').oninput = (e) => {
+    const n = state.nodes[state.selectedId]; if (!n) return;
+    n.y = Number(e.target.value) || 0; save(); draw();
+  };
+  $('nodeSearch').oninput = () => renderNodeList();
+  $('neighborSearch').oninput = () => { if (state.selectedId) renderEdgeList('neighborList', 'neighbors'); };
+  $('shortcutSearch').oninput = () => { if (state.selectedId) renderEdgeList('shortcutList', 'shortcuts'); };
+
+  $('deleteNode').onclick = () => {
+    const id = state.selectedId; if (!id) return;
+    if (!confirm('Delete this node?')) return;
+    for (const oid in state.nodes[id].neighbors) delete state.nodes[oid].neighbors[id];
+    for (const oid in state.nodes[id].shortcuts) delete state.nodes[oid].shortcuts[id];
+    delete state.nodes[id];
+    if (state.pathFromId === id) state.pathFromId = null;
+    selectNode(null); save(); renderNodeList(); draw();
+  };
+
+  $('clearBtn').onclick = () => {
+    if (!confirm('Delete the entire network?')) return;
+    state.nodes = {}; state.nextId = 1; state.selectedId = null; state.pathFromId = null;
+    save(); renderNodeList(); renderEditor(); draw();
+  };
+
+  $('exportBtn').onclick = () => {
+    const data = JSON.stringify({
+      nodes: state.nodes, nextId: state.nextId,
+      defNeighborTime: state.defNeighborTime, defShortcutTime: state.defShortcutTime,
+    }, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'network.json'; a.click();
+    URL.revokeObjectURL(url);
+  };
+  $('importBtn').onclick = () => {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'application/json';
+    inp.onchange = () => {
+      const f = inp.files[0]; if (!f) return;
+      const r = new FileReader();
+      r.onload = () => {
+        try {
+          const data = JSON.parse(r.result);
+          state.nodes = data.nodes || {};
+          state.nextId = data.nextId || 1;
+          state.defNeighborTime = data.defNeighborTime ?? 1;
+          state.defShortcutTime = data.defShortcutTime ?? 0.5;
+          $('defNeighbor').value = state.defNeighborTime;
+          $('defShortcut').value = state.defShortcutTime;
+          selectNode(null); save(); renderNodeList(); draw();
+        } catch (e) { alert('Invalid JSON'); }
+      };
+      r.readAsText(f);
+    };
+    inp.click();
+  };
+
+  // ---------- Gamestate parser ----------
+  function parseGamestate(text) {
+    const lines = text.split(/\r?\n/);
+    const stack = [{ type: 'root' }];
+    let pendingKey = null;
+    const objects = [];
+
+    const pushBlock = (key, lineNum) => {
+      const parent = stack[stack.length - 1];
+      let entry = { type: 'other' };
+      if (parent.type === 'root' && key === 'galactic_object') {
+        entry = { type: 'galactic_object_list' };
+      } else if (parent.type === 'galactic_object_list' && key !== null && /^\d+$/.test(key)) {
+        entry = { type: 'galactic_object', index: key, lineNum, x: null, y: null, name: null, hyperlanes: [] };
+      } else if (parent.type === 'galactic_object' && key === 'coordinate') {
+        entry = { type: 'coordinate' };
+      } else if (parent.type === 'galactic_object' && key === 'name') {
+        entry = { type: 'name' };
+      } else if (parent.type === 'galactic_object' && key === 'hyperlane') {
+        entry = { type: 'hyperlane_list' };
+      } else if (parent.type === 'hyperlane_list' && key === null) {
+        entry = { type: 'hyperlane_entry' };
+      }
+      stack.push(entry);
+    };
+
+    const popBlock = () => {
+      const top = stack.pop();
+      if (!top) return;
+      if (top.type === 'galactic_object') {
+        if (top.name === null) {
+          throw new Error(`galactic_object ${top.index} starting at line ${top.lineNum} is missing a name block`);
+        }
+        objects.push(top);
+      }
+    };
+
+    const findAncestor = (type) => {
+      for (let i = stack.length - 1; i >= 0; i--) if (stack[i].type === type) return stack[i];
+      return null;
+    };
+
+    const handleKV = (key, value) => {
+      const top = stack[stack.length - 1];
+      if (top.type === 'coordinate') {
+        const go = findAncestor('galactic_object');
+        if (!go) return;
+        if (key === 'x') go.x = parseFloat(value);
+        else if (key === 'y') go.y = parseFloat(value);
+      } else if (top.type === 'name' && key === 'key') {
+        const go = findAncestor('galactic_object');
+        if (go) go.name = value;
+      } else if (top.type === 'hyperlane_entry' && key === 'to') {
+        const go = findAncestor('galactic_object');
+        if (go) go.hyperlanes.push(value);
+      }
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const lineNum = i + 1;
+      const line = lines[i];
+      let pos = 0;
+      const len = line.length;
+      while (pos < len) {
+        const ch = line.charCodeAt(pos);
+        // whitespace
+        if (ch === 32 || ch === 9) { pos++; continue; }
+        // '{'
+        if (ch === 123) {
+          const k = pendingKey; pendingKey = null;
+          pushBlock(k, lineNum);
+          pos++; continue;
+        }
+        // '}'
+        if (ch === 125) {
+          pendingKey = null;
+          popBlock();
+          pos++; continue;
+        }
+        // comment '#'
+        if (ch === 35) break;
+
+        // read a token (key)
+        const tStart = pos;
+        while (pos < len) {
+          const c = line.charCodeAt(pos);
+          if (c === 32 || c === 9 || c === 61 || c === 123 || c === 125) break;
+          pos++;
+        }
+        const key = line.slice(tStart, pos);
+        // skip ws
+        while (pos < len && (line.charCodeAt(pos) === 32 || line.charCodeAt(pos) === 9)) pos++;
+        if (pos < len && line.charCodeAt(pos) === 61) { // '='
+          pos++;
+          while (pos < len && (line.charCodeAt(pos) === 32 || line.charCodeAt(pos) === 9)) pos++;
+          if (pos >= len) {
+            // value/block on later line
+            pendingKey = key;
+            break;
+          }
+          const next = line.charCodeAt(pos);
+          if (next === 123) { // '{'
+            pendingKey = null;
+            pushBlock(key, lineNum);
+            pos++; continue;
+          }
+          // read value
+          let value;
+          if (next === 34) { // '"'
+            pos++;
+            const vs = pos;
+            while (pos < len && line.charCodeAt(pos) !== 34) pos++;
+            value = line.slice(vs, pos);
+            if (pos < len) pos++;
+          } else {
+            const vs = pos;
+            while (pos < len) {
+              const c = line.charCodeAt(pos);
+              if (c === 32 || c === 9 || c === 123 || c === 125) break;
+              pos++;
+            }
+            value = line.slice(vs, pos);
+          }
+          // any orphaned pendingKey from prior line is dropped here
+          pendingKey = null;
+          handleKV(key, value);
+        }
+        // else: bare token (value in a list), ignore
+      }
+    }
+    return objects;
+  }
+
+  function buildNetworkFromGamestate(objects) {
+    const nodes = {};
+    const validIndices = new Set(objects.map(o => o.index));
+    for (const o of objects) {
+      nodes[o.index] = {
+        id: o.index,
+        name: o.name,
+        x: -(o.x ?? 0),
+        y: o.y ?? 0,
+        neighbors: {},
+        shortcuts: {},
+        shortcutsExpanded: false,
+        hidden: true,
+      };
+    }
+    let edgeCount = 0;
+    for (const o of objects) {
+      for (const to of o.hyperlanes) {
+        if (!validIndices.has(to)) continue;
+        if (to === o.index) continue;
+        if (!(to in nodes[o.index].neighbors)) edgeCount++;
+        nodes[o.index].neighbors[to] = null;
+        nodes[to].neighbors[o.index] = null;
+      }
+    }
+    let maxId = 0;
+    for (const id in nodes) maxId = Math.max(maxId, parseInt(id, 10) || 0);
+    return { nodes, nextId: maxId + 1, edgeCount };
+  }
+
+  function fitToView() {
+    const ids = Object.keys(state.nodes);
+    if (!ids.length) return;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const id of ids) {
+      const n = state.nodes[id];
+      if (n.x < minX) minX = n.x;
+      if (n.y < minY) minY = n.y;
+      if (n.x > maxX) maxX = n.x;
+      if (n.y > maxY) maxY = n.y;
+    }
+    const w = cv.clientWidth, h = cv.clientHeight;
+    const dw = (maxX - minX) || 1, dh = (maxY - minY) || 1;
+    const margin = 60;
+    const zx = (w - margin * 2) / dw;
+    const zy = (h - margin * 2) / dh;
+    state.zoom = Math.max(0.01, Math.min(50, Math.min(zx, zy)));
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    state.pan.x = -cx * state.zoom;
+    state.pan.y = -cy * state.zoom;
+    draw();
+  }
+
+  $('importGsBtn').onclick = () => {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.onchange = () => {
+      const f = inp.files[0]; if (!f) return;
+      $('status').textContent = `Reading ${f.name}...`;
+      const r = new FileReader();
+      r.onload = () => {
+        $('status').textContent = 'Parsing gamestate...';
+        setTimeout(() => {
+          let objects;
+          try {
+            objects = parseGamestate(r.result);
+          } catch (e) {
+            $('status').textContent = 'Parse failed';
+            alert('Parse error: ' + e.message);
+            return;
+          }
+          if (!objects.length) {
+            $('status').textContent = 'No galactic_object entries found';
+            alert('No galactic_object entries were found in the file.');
+            return;
+          }
+          const built = buildNetworkFromGamestate(objects);
+          if (!confirm(`Parsed ${objects.length} systems with ${built.edgeCount} hyperlanes.\n\nThis will REPLACE the current network. Continue?`)) {
+            $('status').textContent = 'Import cancelled';
+            return;
+          }
+          state.nodes = built.nodes;
+          state.nextId = built.nextId;
+          state.selectedId = null;
+          state.pathFromId = null;
+          save();
+          setMode('selection');
+          fitToView();
+          $('status').textContent = `Imported ${objects.length} systems, ${built.edgeCount} hyperlanes — pick which to include`;
+        }, 10);
+      };
+      r.onerror = () => { $('status').textContent = 'Read failed'; alert('Failed to read file.'); };
+      r.readAsText(f);
+    };
+    inp.click();
+  };
+
+  $('fitBtn').onclick = fitToView;
+
+  function updateLegend() {
+    const el = $('legend');
+    if (state.mode === 'path' && state.pathFromId && state.nodes[state.pathFromId]) {
+      const n = state.nodes[state.pathFromId];
+      el.innerHTML = `<b>Shortest path from:</b> ${escapeHtml(n.name)}<br><span style="display:inline-block;width:14px;height:8px;background:hsl(120,75%,55%)"></span> near &nbsp; <span style="display:inline-block;width:14px;height:8px;background:hsl(0,75%,55%)"></span> far &nbsp; <span style="color:#888">gray = unreachable</span>`;
+    } else if (state.mode === 'path') {
+      el.innerHTML = '<b>Shortest path mode:</b> click a node to begin.';
+    } else {
+      el.innerHTML = '';
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // ---------- Init ----------
+  load();
+  $('defNeighbor').value = state.defNeighborTime;
+  $('defShortcut').value = state.defShortcutTime;
+  renderNodeList();
+  renderEditor();
+  resize();
+})();
+</script>
+</body>
+</html>
