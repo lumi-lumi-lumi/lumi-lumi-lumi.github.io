@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Geometric vs Linear Cumulative Mass Function</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #14171c;
+    --panel: #1d2127;
+    --ink: #e8e8e8;
+    --muted: #9aa3ad;
+    --accent1: #4cc9f0;
+    --accent2: #f72585;
+    --border: #2a2f37;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    padding: 24px;
+    line-height: 1.5;
+  }
+  h1 { margin: 0 0 4px; font-size: 1.6rem; }
+  .subtitle { color: var(--muted); margin-bottom: 24px; }
+  .container { max-width: 1200px; margin: 0 auto; }
+  .controls {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 24px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 20px;
+  }
+  .control-group h3 {
+    margin: 0 0 12px;
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .geo h3 { color: var(--accent1); }
+  .prd h3 { color: var(--accent2); }
+  .slider-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 10px;
+  }
+  .slider-row label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+  .slider-row .val { color: var(--ink); font-variant-numeric: tabular-nums; }
+  input[type="range"] { width: 100%; accent-color: var(--accent1); }
+  .prd input[type="range"] { accent-color: var(--accent2); }
+  .stats {
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin-top: 8px;
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+  }
+  .stats span { color: var(--ink); }
+  .charts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 900px) { .charts { grid-template-columns: 1fr; } }
+  .chart-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .chart-card h2 {
+    margin: 0 0 12px;
+    font-size: 1rem;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .chart-wrap { position: relative; height: 340px; }
+  footer {
+    margin-top: 24px;
+    color: var(--muted);
+    font-size: 0.8rem;
+  }
+  code {
+    background: #2a2f37;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.85em;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Geometric vs Linear Cumulative Mass Function</h1>
+  <p class="subtitle">Comparing a fixed-probability (geometric) system to a scaling pseudo-random distribution (PRD), where the success chance grows with each consecutive failure. PRD uses <code>P = a / (1 − a·n)</code>, with n = failures since last success. On all charts, the x-axis is the attempt number since the last success (n = 1 is the first attempt after a success). For PRD, the per-attempt chance is clamped to [0, 1] — once the denominator hits 0 or goes negative, success is guaranteed.</p>
+
+  <div class="controls">
+    <div class="control-group geo">
+      <h3>Geometric &nbsp; P = c</h3>
+      <div class="slider-row">
+        <label>c <span class="val" id="cVal">0.200</span></label>
+        <input type="range" id="cSlider" min="0.01" max="1" step="0.0001" value="0.20" />
+      </div>
+      <div class="stats">
+        Mean attempts to success: <span id="geoMean">—</span><br>
+        Equivalent per-attempt chance: <span id="geoEquiv">—</span>
+      </div>
+    </div>
+
+    <div class="control-group prd">
+      <h3>Scaling PRD &nbsp; P = a / (1 − a·n)</h3>
+      <div class="slider-row">
+        <label>a (base chance) <span class="val" id="aVal">0.100</span></label>
+        <input type="range" id="aSlider" min="0.01" max="1" step="0.0001" value="0.10" />
+      </div>
+      <div class="stats">
+        Mean attempts to success: <span id="prdMean">—</span> &nbsp;|&nbsp;
+        Guaranteed by attempt: <span id="prdMax">—</span><br>
+        Equivalent per-attempt chance: <span id="prdEquiv">—</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="charts">
+    <div class="chart-card">
+      <h2>Probability Mass Function — P(success on attempt n)</h2>
+      <div class="chart-wrap"><canvas id="pmfChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h2>Cumulative Mass Function — P(success by attempt n)</h2>
+      <div class="chart-wrap"><canvas id="cmfChart"></canvas></div>
+    </div>
+    <div class="chart-card" style="grid-column: 1 / -1;">
+      <h2>Expected number of successes after n attempts</h2>
+      <div class="slider-row" style="max-width: 360px;">
+        <label>X-axis max <span class="val" id="expMaxVal">100</span></label>
+        <input type="range" id="expMaxSlider" min="10" max="1000" step="1" value="100" />
+      </div>
+      <div class="chart-wrap"><canvas id="expChart"></canvas></div>
+      <div class="stats" style="margin-top: 12px;">
+        At low n, the PRD's expected number of successes is slightly <em>below</em> the geometric line. This is the cost of cutting off the geometric distribution's long tail: to keep the mean inter-success time matched, the up-front success chance has to be lower than the geometric's per-attempt chance. The early attempts are "paying" for the guarantee that no run will go absurdly long.
+        <br><br>
+        Scale up the x-axis max and the gap stops growing — their asymptotic slope is identical (both = 1 / mean attempts to success). The PRD line stays slightly below the geometric throughout, but it tracks it in parallel: in the long run the two systems produce the same rate of successes, just offset by the early-n deficit.
+      </div>
+    </div>
+    <div class="chart-card" style="grid-column: 1 / -1;">
+      <h2>Simulated success timing — geometric vs PRD</h2>
+      <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-bottom: 12px;">
+        <button id="regenBtn" style="background: var(--accent1); color: #14171c; border: none; padding: 8px 14px; border-radius: 6px; font-weight: 600; cursor: pointer;">Regenerate</button>
+        <div class="slider-row" style="max-width: 320px; flex: 1; margin-bottom: 0;">
+          <label>Attempts shown <span class="val" id="simNVal">500</span></label>
+          <input type="range" id="simNSlider" min="50" max="2000" step="10" value="500" />
+        </div>
+        <div class="stats" style="border: none; padding: 0; margin: 0; min-width: 200px;">
+          Longest dry spell — Geo: <span id="geoDry">—</span> &nbsp; PRD: <span id="prdDry">—</span>
+        </div>
+      </div>
+      <canvas id="simCanvas" style="width: 100%; height: 180px; display: block; background: #14171c; border-radius: 6px;"></canvas>
+      <div class="stats" style="margin-top: 12px;">
+        Each tick marks an attempt that succeeded. Both simulations use the current sliders' c and a values (which are matched in expected rate). Geometric clusters and droughts — the streaky "feels rigged" pattern — versus PRD's near-regular cadence. Hit <em>Regenerate</em> a few times: the geometric strip changes character every roll; the PRD strip looks essentially the same each time.
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const cSlider = document.getElementById('cSlider');
+const aSlider = document.getElementById('aSlider');
+const cVal = document.getElementById('cVal');
+const aVal = document.getElementById('aVal');
+const geoMean = document.getElementById('geoMean');
+const prdMean = document.getElementById('prdMean');
+const prdMax = document.getElementById('prdMax');
+const geoEquiv = document.getElementById('geoEquiv');
+const prdEquiv = document.getElementById('prdEquiv');
+const expMaxSlider = document.getElementById('expMaxSlider');
+const expMaxVal = document.getElementById('expMaxVal');
+const simCanvas = document.getElementById('simCanvas');
+const simNSlider = document.getElementById('simNSlider');
+const simNVal = document.getElementById('simNVal');
+const regenBtn = document.getElementById('regenBtn');
+const geoDryEl = document.getElementById('geoDry');
+const prdDryEl = document.getElementById('prdDry');
+
+function computeDistributions(c, a) {
+  // n = 1, 2, 3, ... is the attempt # since last success.
+  // Geometric: P(N=n) = (1-c)^(n-1) * c
+  // PRD: at attempt n, failure count so far is (n-1).
+  //      P_n = clamp(a / (1 - a*(n-1)), 0, 1).  Once denom <= 0, success is guaranteed (P_n = 1).
+  //      P(N=n) = [prod_{k=1}^{n-1}(1 - P_k)] * P_n
+  const maxN = 1000;
+  const labels = [];
+  const geoPMF = [], geoCMF = [];
+  const prdPMF = [], prdCMF = [];
+
+  let geoCum = 0;
+  let prdSurvival = 1; // prob no success yet before attempt n
+  let prdCum = 0;
+  let prdGuaranteedAt = null;
+
+  for (let n = 1; n <= maxN; n++) {
+    labels.push(n);
+
+    // Geometric
+    const gp = Math.pow(1 - c, n - 1) * c;
+    geoCum += gp;
+    geoPMF.push(gp);
+    geoCMF.push(Math.min(geoCum, 1));
+
+    // PRD
+    const denom = 1 - a * (n - 1);
+    let pn = denom > 0 ? a / denom : 1;
+    if (pn < 0) pn = 0;
+    if (pn > 1) pn = 1;
+    const pp = prdSurvival * pn;
+    prdPMF.push(pp);
+    prdCum += pp;
+    prdCMF.push(Math.min(prdCum, 1));
+    prdSurvival *= (1 - pn);
+    if (prdGuaranteedAt === null && pn >= 1) prdGuaranteedAt = n;
+  }
+
+  // Means
+  const geoMeanVal = c > 0 ? 1 / c : Infinity;
+  let prdMeanVal = 0;
+  for (let i = 0; i < prdPMF.length; i++) prdMeanVal += (i + 1) * prdPMF[i];
+
+  // Expected number of successes after n attempts.
+  //   Geometric: n * c (independent trials).
+  //   PRD: renewal eq. Let h(k) = P(success on attempt k). h(k) = f(k) + sum_{j=1..k-1} f(j)*h(k-j).
+  //        Then M(n) = sum_{k=1..n} h(k).
+  const geoExpected = [];
+  const prdExpected = [];
+  const h = new Array(maxN + 1).fill(0);
+  let prdCumExp = 0;
+  for (let k = 1; k <= maxN; k++) {
+    let hk = prdPMF[k - 1];
+    for (let j = 1; j < k; j++) hk += prdPMF[j - 1] * h[k - j];
+    h[k] = hk;
+    prdCumExp += hk;
+    prdExpected.push(prdCumExp);
+    geoExpected.push(k * c);
+  }
+
+  // X-axis extends to 1.5 * the PRD "guaranteed by" attempt (fallback if undefined).
+  let cutoff;
+  if (prdGuaranteedAt !== null) {
+    cutoff = Math.ceil(prdGuaranteedAt * 1.5);
+  } else {
+    cutoff = 1;
+    for (let i = 0; i < maxN; i++) if (geoCMF[i] < 0.999) cutoff = i + 1;
+  }
+  cutoff = Math.min(maxN, Math.max(cutoff, 5));
+
+  return {
+    labels: labels.slice(0, cutoff),
+    geoPMF: geoPMF.slice(0, cutoff),
+    geoCMF: geoCMF.slice(0, cutoff),
+    prdPMF: prdPMF.slice(0, cutoff),
+    prdCMF: prdCMF.slice(0, cutoff),
+    geoExpectedFull: geoExpected,
+    prdExpectedFull: prdExpected,
+    labelsFull: Array.from({ length: maxN }, (_, i) => i + 1),
+    geoMeanVal,
+    prdMeanVal,
+    prdGuaranteedAt
+  };
+}
+
+const commonOptions = (yLabel) => ({
+  responsive: true,
+  maintainAspectRatio: false,
+  animation: { duration: 150 },
+  interaction: { mode: 'index', intersect: false },
+  scales: {
+    x: {
+      title: { display: true, text: 'Attempt # since last success (n)', color: '#9aa3ad' },
+      ticks: { color: '#9aa3ad' },
+      grid: { color: '#2a2f37' }
+    },
+    y: {
+      title: { display: true, text: yLabel, color: '#9aa3ad' },
+      ticks: { color: '#9aa3ad' },
+      grid: { color: '#2a2f37' },
+      beginAtZero: true,
+      suggestedMax: 1
+    }
+  },
+  plugins: {
+    legend: { labels: { color: '#e8e8e8' } },
+    tooltip: {
+      callbacks: {
+        label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(4)}`
+      }
+    }
+  }
+});
+
+const pmfCtx = document.getElementById('pmfChart').getContext('2d');
+const cmfCtx = document.getElementById('cmfChart').getContext('2d');
+
+const pmfChart = new Chart(pmfCtx, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [
+      { label: 'Geometric (fixed)', data: [], borderColor: '#4cc9f0', backgroundColor: 'rgba(76,201,240,0.15)', tension: 0, pointRadius: 2 },
+      { label: 'Scaling PRD', data: [], borderColor: '#f72585', backgroundColor: 'rgba(247,37,133,0.15)', tension: 0, pointRadius: 2 }
+    ]
+  },
+  options: { ...commonOptions('P(success on attempt n)'), scales: { ...commonOptions('').scales, y: { ...commonOptions('').scales.y, title: { display: true, text: 'P(success on attempt n)', color: '#9aa3ad' }, suggestedMax: undefined } } }
+});
+
+const expCtx = document.getElementById('expChart').getContext('2d');
+const expChart = new Chart(expCtx, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [
+      { label: 'Geometric (fixed)', data: [], borderColor: '#4cc9f0', backgroundColor: 'rgba(76,201,240,0.15)', tension: 0, pointRadius: 2 },
+      { label: 'Scaling PRD', data: [], borderColor: '#f72585', backgroundColor: 'rgba(247,37,133,0.15)', tension: 0, pointRadius: 2 }
+    ]
+  },
+  options: { ...commonOptions('E[successes]'), scales: { ...commonOptions('').scales, y: { ...commonOptions('').scales.y, title: { display: true, text: 'E[successes]', color: '#9aa3ad' }, suggestedMax: undefined } } }
+});
+
+const cmfChart = new Chart(cmfCtx, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [
+      { label: 'Geometric (fixed)', data: [], borderColor: '#4cc9f0', backgroundColor: 'rgba(76,201,240,0.15)', tension: 0, pointRadius: 2 },
+      { label: 'Scaling PRD', data: [], borderColor: '#f72585', backgroundColor: 'rgba(247,37,133,0.15)', tension: 0, pointRadius: 2 }
+    ]
+  },
+  options: commonOptions('P(success by attempt n)')
+});
+
+function update() {
+  const c = parseFloat(cSlider.value);
+  const a = parseFloat(aSlider.value);
+  cVal.textContent = c.toFixed(3);
+  aVal.textContent = a.toFixed(3);
+
+  const d = computeDistributions(c, a);
+  pmfChart.data.labels = d.labels;
+  pmfChart.data.datasets[0].data = d.geoPMF;
+  pmfChart.data.datasets[1].data = d.prdPMF;
+  pmfChart.update();
+
+  cmfChart.data.labels = d.labels;
+  cmfChart.data.datasets[0].data = d.geoCMF;
+  cmfChart.data.datasets[1].data = d.prdCMF;
+  cmfChart.update();
+
+  const expMax = Math.min(parseInt(expMaxSlider.value, 10), d.labelsFull.length);
+  expMaxVal.textContent = expMax;
+  expChart.data.labels = d.labelsFull.slice(0, expMax);
+  expChart.data.datasets[0].data = d.geoExpectedFull.slice(0, expMax);
+  expChart.data.datasets[1].data = d.prdExpectedFull.slice(0, expMax);
+  expChart.update();
+
+  geoMean.textContent = isFinite(d.geoMeanVal) ? d.geoMeanVal.toFixed(2) : '∞';
+  prdMean.textContent = d.prdMeanVal.toFixed(2);
+  prdMax.textContent = d.prdGuaranteedAt !== null ? `n = ${d.prdGuaranteedAt}` : 'never';
+  geoEquiv.textContent = isFinite(d.geoMeanVal) && d.geoMeanVal > 0 ? (100 / d.geoMeanVal).toFixed(2) + '%' : '—';
+  prdEquiv.textContent = d.prdMeanVal > 0 ? (100 / d.prdMeanVal).toFixed(2) + '%' : '—';
+}
+
+// Closed form for PRD mean given a:
+//   N = floor(1/a), μ_prd(a) = (N+1) * (1 - a*N/2)
+// Geometric mean: μ_geo(c) = 1/c.
+// μ_prd is strictly decreasing in a on (0, 1], so we invert it via binary search.
+function prdMeanFor(a) {
+  if (a >= 1) return 1;
+  const N = Math.floor(1 / a);
+  return (N + 1) * (1 - a * N / 2);
+}
+
+function solveAForMean(targetMean, aMin, aMax) {
+  // Clamp to achievable range given slider bounds.
+  const muAtMin = prdMeanFor(aMin);
+  const muAtMax = prdMeanFor(aMax);
+  if (targetMean >= muAtMin) return aMin;
+  if (targetMean <= muAtMax) return aMax;
+  let lo = aMin, hi = aMax;
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    if (prdMeanFor(mid) > targetMean) lo = mid; else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+let syncing = false;
+const C_MIN = parseFloat(cSlider.min), C_MAX = parseFloat(cSlider.max);
+// Pick A_MIN such that PRD's mean at A_MIN equals the geometric mean at C_MIN (=1/C_MIN).
+// We bisect on a in (1e-6, 1].
+function aMinForCMin(cMin) {
+  const target = 1 / cMin;
+  let lo = 1e-6, hi = 1;
+  for (let i = 0; i < 80; i++) {
+    const mid = (lo + hi) / 2;
+    if (prdMeanFor(mid) > target) lo = mid; else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+const A_MIN = aMinForCMin(C_MIN);
+const A_MAX = parseFloat(aSlider.max);
+aSlider.min = A_MIN.toFixed(6);
+
+cSlider.addEventListener('input', () => {
+  if (!syncing) {
+    syncing = true;
+    const c = parseFloat(cSlider.value);
+    const target = 1 / c;
+    const a = solveAForMean(target, A_MIN, A_MAX);
+    aSlider.value = a.toFixed(4);
+    syncing = false;
+  }
+  update();
+});
+
+aSlider.addEventListener('input', () => {
+  if (!syncing) {
+    syncing = true;
+    const a = parseFloat(aSlider.value);
+    const mu = prdMeanFor(a);
+    let c = 1 / mu;
+    c = Math.min(C_MAX, Math.max(C_MIN, c));
+    cSlider.value = c.toFixed(4);
+    syncing = false;
+  }
+  update();
+});
+
+expMaxSlider.addEventListener('input', update);
+
+// ------- Simulation strip -------
+// We use a seed that only resets when "Regenerate" is clicked, so slider drags
+// re-run the same sequence rather than producing a flickery new pattern each frame.
+let simSeed = Math.floor(Math.random() * 2 ** 31);
+function mulberry32(seed) {
+  return function () {
+    seed = (seed + 0x6D2B79F5) | 0;
+    let t = seed;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function simulate(N, c, a) {
+  const rng = mulberry32(simSeed);
+  const geoHits = [];
+  const prdHits = [];
+  let lastGeo = 0, geoMaxGap = 0;
+  let lastPrd = 0, prdMaxGap = 0;
+  let prdFails = 0;
+  for (let n = 1; n <= N; n++) {
+    if (rng() < c) {
+      geoHits.push(n);
+      geoMaxGap = Math.max(geoMaxGap, n - lastGeo);
+      lastGeo = n;
+    }
+    const denom = 1 - a * prdFails;
+    const pn = denom > 0 ? Math.min(1, a / denom) : 1;
+    if (rng() < pn) {
+      prdHits.push(n);
+      prdMaxGap = Math.max(prdMaxGap, n - lastPrd);
+      lastPrd = n;
+      prdFails = 0;
+    } else {
+      prdFails++;
+    }
+  }
+  // Account for trailing dry spell.
+  geoMaxGap = Math.max(geoMaxGap, N - lastGeo);
+  prdMaxGap = Math.max(prdMaxGap, N - lastPrd);
+  return { geoHits, prdHits, geoMaxGap, prdMaxGap };
+}
+
+function drawSim() {
+  const N = parseInt(simNSlider.value, 10);
+  simNVal.textContent = N;
+  const c = parseFloat(cSlider.value);
+  const a = parseFloat(aSlider.value);
+  const sim = simulate(N, c, a);
+
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = simCanvas.clientWidth;
+  const cssH = simCanvas.clientHeight;
+  simCanvas.width = cssW * dpr;
+  simCanvas.height = cssH * dpr;
+  const ctx = simCanvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  const padL = 60, padR = 12, padT = 16, padB = 24;
+  const plotW = cssW - padL - padR;
+  const rowH = (cssH - padT - padB) / 2;
+  const geoY = padT;
+  const prdY = padT + rowH;
+
+  // Row backgrounds.
+  ctx.fillStyle = '#1d2127';
+  ctx.fillRect(padL, geoY + 8, plotW, rowH - 16);
+  ctx.fillRect(padL, prdY + 8, plotW, rowH - 16);
+
+  // Labels.
+  ctx.fillStyle = '#4cc9f0';
+  ctx.font = '12px -apple-system, Segoe UI, sans-serif';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Geometric', 6, geoY + rowH / 2);
+  ctx.fillStyle = '#f72585';
+  ctx.fillText('PRD', 6, prdY + rowH / 2);
+
+  // Ticks.
+  const drawTicks = (hits, y, color) => {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (const n of hits) {
+      const x = padL + ((n - 0.5) / N) * plotW;
+      ctx.moveTo(x, y + 8);
+      ctx.lineTo(x, y + rowH - 8);
+    }
+    ctx.stroke();
+  };
+  drawTicks(sim.geoHits, geoY, '#4cc9f0');
+  drawTicks(sim.prdHits, prdY, '#f72585');
+
+  // X-axis labels (start and end).
+  ctx.fillStyle = '#9aa3ad';
+  ctx.textBaseline = 'top';
+  ctx.fillText('attempt 1', padL, cssH - padB + 4);
+  const endLabel = `attempt ${N}`;
+  const endW = ctx.measureText(endLabel).width;
+  ctx.fillText(endLabel, padL + plotW - endW, cssH - padB + 4);
+
+  geoDryEl.textContent = sim.geoMaxGap;
+  prdDryEl.textContent = sim.prdMaxGap;
+}
+
+function regen() { simSeed = Math.floor(Math.random() * 2 ** 31); drawSim(); }
+regenBtn.addEventListener('click', regen);
+simNSlider.addEventListener('input', drawSim);
+cSlider.addEventListener('input', drawSim);
+aSlider.addEventListener('input', drawSim);
+window.addEventListener('resize', drawSim);
+
+
+// Sync at startup so the two sliders show matching means out of the gate.
+{
+  const c0 = parseFloat(cSlider.value);
+  aSlider.value = solveAForMean(1 / c0, A_MIN, A_MAX).toFixed(4);
+}
+update();
+drawSim();
+</script>
+</body>
+</html>
