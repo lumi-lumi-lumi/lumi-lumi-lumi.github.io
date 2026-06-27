@@ -43,7 +43,7 @@
     letter-spacing: 0.05em;
   }
   .geo h3 { color: var(--accent1); }
-  .prd h3 { color: var(--accent2); }
+  .lcmf h3 { color: var(--accent2); }
   .slider-row {
     display: flex;
     flex-direction: column;
@@ -58,7 +58,7 @@
   }
   .slider-row .val { color: var(--ink); font-variant-numeric: tabular-nums; }
   input[type="range"] { width: 100%; accent-color: var(--accent1); }
-  .prd input[type="range"] { accent-color: var(--accent2); }
+  .lcmf input[type="range"] { accent-color: var(--accent2); }
   .stats {
     font-size: 0.8rem;
     color: var(--muted);
@@ -102,7 +102,7 @@
 <body>
 <div class="container">
   <h1>Geometric vs Linear Cumulative Mass Function</h1>
-  <p class="subtitle">Comparing a fixed-probability (geometric) system to a scaling pseudo-random distribution (PRD), where the success chance grows with each consecutive failure. PRD uses <code>P = a / (1 − a·n)</code>, with n = failures since last success. On all charts, the x-axis is the attempt number since the last success (n = 1 is the first attempt after a success). For PRD, the per-attempt chance is clamped to [0, 1] — once the denominator hits 0 or goes negative, success is guaranteed.</p>
+  <p class="subtitle">Comparing a fixed-probability (geometric) system to a scaling linear cumulative mass function (LCMF), where the success chance grows with each consecutive failure. LCMF uses <code>P = b / (1 − b·n)</code>, with n = failures since last success. On all charts, the x-axis is the attempt number since the last success (n = 1 is the first attempt after a success). For LCMF, the per-attempt chance is clamped to [0, 1] — once the denominator hits 0 or goes negative, success is guaranteed.</p>
 
   <div class="controls">
     <div class="control-group geo">
@@ -117,16 +117,16 @@
       </div>
     </div>
 
-    <div class="control-group prd">
-      <h3>Scaling PRD &nbsp; P = a / (1 − a·n)</h3>
+    <div class="control-group lcmf">
+      <h3>Scaling LCMF &nbsp; P = b / (1 − b·n)</h3>
       <div class="slider-row">
-        <label>a (base chance) <span class="val" id="aVal">0.100</span></label>
-        <input type="range" id="aSlider" min="0.01" max="1" step="0.0001" value="0.10" />
+        <label>b (base chance) <span class="val" id="bVal">0.100</span></label>
+        <input type="range" id="bSlider" min="0.01" max="1" step="0.0001" value="0.10" />
       </div>
       <div class="stats">
-        Mean attempts to success: <span id="prdMean">—</span> &nbsp;|&nbsp;
-        Guaranteed by attempt: <span id="prdMax">—</span><br>
-        Equivalent per-attempt chance: <span id="prdEquiv">—</span>
+        Mean attempts to success: <span id="lcmfMean">—</span> &nbsp;|&nbsp;
+        Guaranteed by attempt: <span id="lcmfMax">—</span><br>
+        Equivalent per-attempt chance: <span id="lcmfEquiv">—</span>
       </div>
     </div>
   </div>
@@ -148,13 +148,13 @@
       </div>
       <div class="chart-wrap"><canvas id="expChart"></canvas></div>
       <div class="stats" style="margin-top: 12px;">
-        At low n, the PRD's expected number of successes is slightly <em>below</em> the geometric line. This is the cost of cutting off the geometric distribution's long tail: to keep the mean inter-success time matched, the up-front success chance has to be lower than the geometric's per-attempt chance. The early attempts are "paying" for the guarantee that no run will go absurdly long.
+        At low n, the LCMF's expected number of successes is slightly <em>below</em> the geometric line. This is the cost of cutting off the geometric distribution's long tail: to keep the mean inter-success time matched, the up-front success chance has to be lower than the geometric's per-attempt chance. The early attempts are "paying" for the guarantee that no run will go absurdly long.
         <br><br>
-        Scale up the x-axis max and the gap stops growing — their asymptotic slope is identical (both = 1 / mean attempts to success). The PRD line stays slightly below the geometric throughout, but it tracks it in parallel: in the long run the two systems produce the same rate of successes, just offset by the early-n deficit.
+        Scale up the x-axis max and the gap stops growing — their asymptotic slope is identical (both = 1 / mean attempts to success). The LCMF line stays slightly below the geometric throughout, but it tracks it in parallel: in the long run the two systems produce the same rate of successes, just offset by the early-n deficit.
       </div>
     </div>
     <div class="chart-card" style="grid-column: 1 / -1;">
-      <h2>Simulated success timing — geometric vs PRD</h2>
+      <h2>Simulated success timing — geometric vs LCMF</h2>
       <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-bottom: 12px;">
         <button id="regenBtn" style="background: var(--accent1); color: #14171c; border: none; padding: 8px 14px; border-radius: 6px; font-weight: 600; cursor: pointer;">Regenerate</button>
         <div class="slider-row" style="max-width: 320px; flex: 1; margin-bottom: 0;">
@@ -162,12 +162,12 @@
           <input type="range" id="simNSlider" min="50" max="2000" step="10" value="500" />
         </div>
         <div class="stats" style="border: none; padding: 0; margin: 0; min-width: 200px;">
-          Longest dry spell — Geo: <span id="geoDry">—</span> &nbsp; PRD: <span id="prdDry">—</span>
+          Longest dry spell — Geo: <span id="geoDry">—</span> &nbsp; LCMF: <span id="lcmfDry">—</span>
         </div>
       </div>
       <canvas id="simCanvas" style="width: 100%; height: 180px; display: block; background: #14171c; border-radius: 6px;"></canvas>
       <div class="stats" style="margin-top: 12px;">
-        Each tick marks an attempt that succeeded. Both simulations use the current sliders' c and a values (which are matched in expected rate). Geometric clusters and droughts — the streaky "feels rigged" pattern — versus PRD's near-regular cadence. Hit <em>Regenerate</em> a few times: the geometric strip changes character every roll; the PRD strip looks essentially the same each time.
+        Each tick marks an attempt that succeeded. Both simulations use the current sliders' c and b values (which are matched in expected rate). Geometric clusters and droughts — the streaky "feels rigged" pattern — versus LCMF's near-regular cadence. Hit <em>Regenerate</em> a few times: the geometric strip changes character every roll; the LCMF strip looks essentially the same each time.
       </div>
     </div>
   </div>
@@ -176,14 +176,14 @@
 
 <script>
 const cSlider = document.getElementById('cSlider');
-const aSlider = document.getElementById('aSlider');
+const bSlider = document.getElementById('bSlider');
 const cVal = document.getElementById('cVal');
-const aVal = document.getElementById('aVal');
+const bVal = document.getElementById('bVal');
 const geoMean = document.getElementById('geoMean');
-const prdMean = document.getElementById('prdMean');
-const prdMax = document.getElementById('prdMax');
+const lcmfMean = document.getElementById('lcmfMean');
+const lcmfMax = document.getElementById('lcmfMax');
 const geoEquiv = document.getElementById('geoEquiv');
-const prdEquiv = document.getElementById('prdEquiv');
+const lcmfEquiv = document.getElementById('lcmfEquiv');
 const expMaxSlider = document.getElementById('expMaxSlider');
 const expMaxVal = document.getElementById('expMaxVal');
 const simCanvas = document.getElementById('simCanvas');
@@ -191,23 +191,23 @@ const simNSlider = document.getElementById('simNSlider');
 const simNVal = document.getElementById('simNVal');
 const regenBtn = document.getElementById('regenBtn');
 const geoDryEl = document.getElementById('geoDry');
-const prdDryEl = document.getElementById('prdDry');
+const lcmfDryEl = document.getElementById('lcmfDry');
 
-function computeDistributions(c, a) {
+function computeDistributions(c, b) {
   // n = 1, 2, 3, ... is the attempt # since last success.
   // Geometric: P(N=n) = (1-c)^(n-1) * c
-  // PRD: at attempt n, failure count so far is (n-1).
-  //      P_n = clamp(a / (1 - a*(n-1)), 0, 1).  Once denom <= 0, success is guaranteed (P_n = 1).
+  // LCMF: at attempt n, failure count so far is (n-1).
+  //      P_n = clamp(b / (1 - b*(n-1)), 0, 1).  Once denom <= 0, success is guaranteed (P_n = 1).
   //      P(N=n) = [prod_{k=1}^{n-1}(1 - P_k)] * P_n
   const maxN = 1000;
   const labels = [];
   const geoPMF = [], geoCMF = [];
-  const prdPMF = [], prdCMF = [];
+  const lcmfPMF = [], lcmfCMF = [];
 
   let geoCum = 0;
-  let prdSurvival = 1; // prob no success yet before attempt n
-  let prdCum = 0;
-  let prdGuaranteedAt = null;
+  let lcmfSurvival = 1; // prob no success yet before attempt n
+  let lcmfCum = 0;
+  let lcmfGuaranteedAt = null;
 
   for (let n = 1; n <= maxN; n++) {
     labels.push(n);
@@ -218,45 +218,45 @@ function computeDistributions(c, a) {
     geoPMF.push(gp);
     geoCMF.push(Math.min(geoCum, 1));
 
-    // PRD
-    const denom = 1 - a * (n - 1);
-    let pn = denom > 0 ? a / denom : 1;
+    // LCMF
+    const denom = 1 - b * (n - 1);
+    let pn = denom > 0 ? b / denom : 1;
     if (pn < 0) pn = 0;
     if (pn > 1) pn = 1;
-    const pp = prdSurvival * pn;
-    prdPMF.push(pp);
-    prdCum += pp;
-    prdCMF.push(Math.min(prdCum, 1));
-    prdSurvival *= (1 - pn);
-    if (prdGuaranteedAt === null && pn >= 1) prdGuaranteedAt = n;
+    const pp = lcmfSurvival * pn;
+    lcmfPMF.push(pp);
+    lcmfCum += pp;
+    lcmfCMF.push(Math.min(lcmfCum, 1));
+    lcmfSurvival *= (1 - pn);
+    if (lcmfGuaranteedAt === null && pn >= 1) lcmfGuaranteedAt = n;
   }
 
   // Means
   const geoMeanVal = c > 0 ? 1 / c : Infinity;
-  let prdMeanVal = 0;
-  for (let i = 0; i < prdPMF.length; i++) prdMeanVal += (i + 1) * prdPMF[i];
+  let lcmfMeanVal = 0;
+  for (let i = 0; i < lcmfPMF.length; i++) lcmfMeanVal += (i + 1) * lcmfPMF[i];
 
   // Expected number of successes after n attempts.
   //   Geometric: n * c (independent trials).
-  //   PRD: renewal eq. Let h(k) = P(success on attempt k). h(k) = f(k) + sum_{j=1..k-1} f(j)*h(k-j).
+  //   LCMF: renewal eq. Let h(k) = P(success on attempt k). h(k) = f(k) + sum_{j=1..k-1} f(j)*h(k-j).
   //        Then M(n) = sum_{k=1..n} h(k).
   const geoExpected = [];
-  const prdExpected = [];
+  const lcmfExpected = [];
   const h = new Array(maxN + 1).fill(0);
-  let prdCumExp = 0;
+  let lcmfCumExp = 0;
   for (let k = 1; k <= maxN; k++) {
-    let hk = prdPMF[k - 1];
-    for (let j = 1; j < k; j++) hk += prdPMF[j - 1] * h[k - j];
+    let hk = lcmfPMF[k - 1];
+    for (let j = 1; j < k; j++) hk += lcmfPMF[j - 1] * h[k - j];
     h[k] = hk;
-    prdCumExp += hk;
-    prdExpected.push(prdCumExp);
+    lcmfCumExp += hk;
+    lcmfExpected.push(lcmfCumExp);
     geoExpected.push(k * c);
   }
 
-  // X-axis extends to 1.5 * the PRD "guaranteed by" attempt (fallback if undefined).
+  // X-axis extends to 1.5 * the LCMF "guaranteed by" attempt (fallback if undefined).
   let cutoff;
-  if (prdGuaranteedAt !== null) {
-    cutoff = Math.ceil(prdGuaranteedAt * 1.5);
+  if (lcmfGuaranteedAt !== null) {
+    cutoff = Math.ceil(lcmfGuaranteedAt * 1.5);
   } else {
     cutoff = 1;
     for (let i = 0; i < maxN; i++) if (geoCMF[i] < 0.999) cutoff = i + 1;
@@ -267,14 +267,14 @@ function computeDistributions(c, a) {
     labels: labels.slice(0, cutoff),
     geoPMF: geoPMF.slice(0, cutoff),
     geoCMF: geoCMF.slice(0, cutoff),
-    prdPMF: prdPMF.slice(0, cutoff),
-    prdCMF: prdCMF.slice(0, cutoff),
+    lcmfPMF: lcmfPMF.slice(0, cutoff),
+    lcmfCMF: lcmfCMF.slice(0, cutoff),
     geoExpectedFull: geoExpected,
-    prdExpectedFull: prdExpected,
+    lcmfExpectedFull: lcmfExpected,
     labelsFull: Array.from({ length: maxN }, (_, i) => i + 1),
     geoMeanVal,
-    prdMeanVal,
-    prdGuaranteedAt
+    lcmfMeanVal,
+    lcmfGuaranteedAt
   };
 }
 
@@ -316,7 +316,7 @@ const pmfChart = new Chart(pmfCtx, {
     labels: [],
     datasets: [
       { label: 'Geometric (fixed)', data: [], borderColor: '#4cc9f0', backgroundColor: 'rgba(76,201,240,0.15)', tension: 0, pointRadius: 2 },
-      { label: 'Scaling PRD', data: [], borderColor: '#f72585', backgroundColor: 'rgba(247,37,133,0.15)', tension: 0, pointRadius: 2 }
+      { label: 'Scaling LCMF', data: [], borderColor: '#f72585', backgroundColor: 'rgba(247,37,133,0.15)', tension: 0, pointRadius: 2 }
     ]
   },
   options: { ...commonOptions('P(success on attempt n)'), scales: { ...commonOptions('').scales, y: { ...commonOptions('').scales.y, title: { display: true, text: 'P(success on attempt n)', color: '#9aa3ad' }, suggestedMax: undefined } } }
@@ -329,7 +329,7 @@ const expChart = new Chart(expCtx, {
     labels: [],
     datasets: [
       { label: 'Geometric (fixed)', data: [], borderColor: '#4cc9f0', backgroundColor: 'rgba(76,201,240,0.15)', tension: 0, pointRadius: 2 },
-      { label: 'Scaling PRD', data: [], borderColor: '#f72585', backgroundColor: 'rgba(247,37,133,0.15)', tension: 0, pointRadius: 2 }
+      { label: 'Scaling LCMF', data: [], borderColor: '#f72585', backgroundColor: 'rgba(247,37,133,0.15)', tension: 0, pointRadius: 2 }
     ]
   },
   options: { ...commonOptions('E[successes]'), scales: { ...commonOptions('').scales, y: { ...commonOptions('').scales.y, title: { display: true, text: 'E[successes]', color: '#9aa3ad' }, suggestedMax: undefined } } }
@@ -341,7 +341,7 @@ const cmfChart = new Chart(cmfCtx, {
     labels: [],
     datasets: [
       { label: 'Geometric (fixed)', data: [], borderColor: '#4cc9f0', backgroundColor: 'rgba(76,201,240,0.15)', tension: 0, pointRadius: 2 },
-      { label: 'Scaling PRD', data: [], borderColor: '#f72585', backgroundColor: 'rgba(247,37,133,0.15)', tension: 0, pointRadius: 2 }
+      { label: 'Scaling LCMF', data: [], borderColor: '#f72585', backgroundColor: 'rgba(247,37,133,0.15)', tension: 0, pointRadius: 2 }
     ]
   },
   options: commonOptions('P(success by attempt n)')
@@ -349,93 +349,93 @@ const cmfChart = new Chart(cmfCtx, {
 
 function update() {
   const c = parseFloat(cSlider.value);
-  const a = parseFloat(aSlider.value);
+  const b = parseFloat(bSlider.value);
   cVal.textContent = c.toFixed(3);
-  aVal.textContent = a.toFixed(3);
+  bVal.textContent = b.toFixed(3);
 
-  const d = computeDistributions(c, a);
+  const d = computeDistributions(c, b);
   pmfChart.data.labels = d.labels;
   pmfChart.data.datasets[0].data = d.geoPMF;
-  pmfChart.data.datasets[1].data = d.prdPMF;
+  pmfChart.data.datasets[1].data = d.lcmfPMF;
   pmfChart.update();
 
   cmfChart.data.labels = d.labels;
   cmfChart.data.datasets[0].data = d.geoCMF;
-  cmfChart.data.datasets[1].data = d.prdCMF;
+  cmfChart.data.datasets[1].data = d.lcmfCMF;
   cmfChart.update();
 
   const expMax = Math.min(parseInt(expMaxSlider.value, 10), d.labelsFull.length);
   expMaxVal.textContent = expMax;
   expChart.data.labels = d.labelsFull.slice(0, expMax);
   expChart.data.datasets[0].data = d.geoExpectedFull.slice(0, expMax);
-  expChart.data.datasets[1].data = d.prdExpectedFull.slice(0, expMax);
+  expChart.data.datasets[1].data = d.lcmfExpectedFull.slice(0, expMax);
   expChart.update();
 
   geoMean.textContent = isFinite(d.geoMeanVal) ? d.geoMeanVal.toFixed(2) : '∞';
-  prdMean.textContent = d.prdMeanVal.toFixed(2);
-  prdMax.textContent = d.prdGuaranteedAt !== null ? `n = ${d.prdGuaranteedAt}` : 'never';
+  lcmfMean.textContent = d.lcmfMeanVal.toFixed(2);
+  lcmfMax.textContent = d.lcmfGuaranteedAt !== null ? `n = ${d.lcmfGuaranteedAt}` : 'never';
   geoEquiv.textContent = isFinite(d.geoMeanVal) && d.geoMeanVal > 0 ? (100 / d.geoMeanVal).toFixed(2) + '%' : '—';
-  prdEquiv.textContent = d.prdMeanVal > 0 ? (100 / d.prdMeanVal).toFixed(2) + '%' : '—';
+  lcmfEquiv.textContent = d.lcmfMeanVal > 0 ? (100 / d.lcmfMeanVal).toFixed(2) + '%' : '—';
 }
 
-// Closed form for PRD mean given a:
-//   N = floor(1/a), μ_prd(a) = (N+1) * (1 - a*N/2)
+// Closed form for LCMF mean given b:
+//   N = floor(1/b), μ_lcmf(b) = (N+1) * (1 - b*N/2)
 // Geometric mean: μ_geo(c) = 1/c.
-// μ_prd is strictly decreasing in a on (0, 1], so we invert it via binary search.
-function prdMeanFor(a) {
-  if (a >= 1) return 1;
-  const N = Math.floor(1 / a);
-  return (N + 1) * (1 - a * N / 2);
+// μ_lcmf is strictly decreasing in b on (0, 1], so we invert it via binary search.
+function lcmfMeanFor(b) {
+  if (b >= 1) return 1;
+  const N = Math.floor(1 / b);
+  return (N + 1) * (1 - b * N / 2);
 }
 
-function solveAForMean(targetMean, aMin, aMax) {
+function solveBForMean(targetMean, bMin, bMax) {
   // Clamp to achievable range given slider bounds.
-  const muAtMin = prdMeanFor(aMin);
-  const muAtMax = prdMeanFor(aMax);
-  if (targetMean >= muAtMin) return aMin;
-  if (targetMean <= muAtMax) return aMax;
-  let lo = aMin, hi = aMax;
+  const muAtMin = lcmfMeanFor(bMin);
+  const muAtMax = lcmfMeanFor(bMax);
+  if (targetMean >= muAtMin) return bMin;
+  if (targetMean <= muAtMax) return bMax;
+  let lo = bMin, hi = bMax;
   for (let i = 0; i < 60; i++) {
     const mid = (lo + hi) / 2;
-    if (prdMeanFor(mid) > targetMean) lo = mid; else hi = mid;
+    if (lcmfMeanFor(mid) > targetMean) lo = mid; else hi = mid;
   }
   return (lo + hi) / 2;
 }
 
 let syncing = false;
 const C_MIN = parseFloat(cSlider.min), C_MAX = parseFloat(cSlider.max);
-// Pick A_MIN such that PRD's mean at A_MIN equals the geometric mean at C_MIN (=1/C_MIN).
-// We bisect on a in (1e-6, 1].
-function aMinForCMin(cMin) {
+// Pick B_MIN such that LCMF's mean at B_MIN equals the geometric mean at C_MIN (=1/C_MIN).
+// We bisect on b in (1e-6, 1].
+function bMinForCMin(cMin) {
   const target = 1 / cMin;
   let lo = 1e-6, hi = 1;
   for (let i = 0; i < 80; i++) {
     const mid = (lo + hi) / 2;
-    if (prdMeanFor(mid) > target) lo = mid; else hi = mid;
+    if (lcmfMeanFor(mid) > target) lo = mid; else hi = mid;
   }
   return (lo + hi) / 2;
 }
-const A_MIN = aMinForCMin(C_MIN);
-const A_MAX = parseFloat(aSlider.max);
-aSlider.min = A_MIN.toFixed(6);
+const B_MIN = bMinForCMin(C_MIN);
+const B_MAX = parseFloat(bSlider.max);
+bSlider.min = B_MIN.toFixed(6);
 
 cSlider.addEventListener('input', () => {
   if (!syncing) {
     syncing = true;
     const c = parseFloat(cSlider.value);
     const target = 1 / c;
-    const a = solveAForMean(target, A_MIN, A_MAX);
-    aSlider.value = a.toFixed(4);
+    const b = solveBForMean(target, B_MIN, B_MAX);
+    bSlider.value = b.toFixed(4);
     syncing = false;
   }
   update();
 });
 
-aSlider.addEventListener('input', () => {
+bSlider.addEventListener('input', () => {
   if (!syncing) {
     syncing = true;
-    const a = parseFloat(aSlider.value);
-    const mu = prdMeanFor(a);
+    const b = parseFloat(bSlider.value);
+    const mu = lcmfMeanFor(b);
     let c = 1 / mu;
     c = Math.min(C_MAX, Math.max(C_MIN, c));
     cSlider.value = c.toFixed(4);
@@ -460,42 +460,42 @@ function mulberry32(seed) {
   };
 }
 
-function simulate(N, c, a) {
+function simulate(N, c, b) {
   const rng = mulberry32(simSeed);
   const geoHits = [];
-  const prdHits = [];
+  const lcmfHits = [];
   let lastGeo = 0, geoMaxGap = 0;
-  let lastPrd = 0, prdMaxGap = 0;
-  let prdFails = 0;
+  let lastPrd = 0, lcmfMaxGap = 0;
+  let lcmfFails = 0;
   for (let n = 1; n <= N; n++) {
     if (rng() < c) {
       geoHits.push(n);
       geoMaxGap = Math.max(geoMaxGap, n - lastGeo);
       lastGeo = n;
     }
-    const denom = 1 - a * prdFails;
-    const pn = denom > 0 ? Math.min(1, a / denom) : 1;
+    const denom = 1 - b * lcmfFails;
+    const pn = denom > 0 ? Math.min(1, b / denom) : 1;
     if (rng() < pn) {
-      prdHits.push(n);
-      prdMaxGap = Math.max(prdMaxGap, n - lastPrd);
+      lcmfHits.push(n);
+      lcmfMaxGap = Math.max(lcmfMaxGap, n - lastPrd);
       lastPrd = n;
-      prdFails = 0;
+      lcmfFails = 0;
     } else {
-      prdFails++;
+      lcmfFails++;
     }
   }
   // Account for trailing dry spell.
   geoMaxGap = Math.max(geoMaxGap, N - lastGeo);
-  prdMaxGap = Math.max(prdMaxGap, N - lastPrd);
-  return { geoHits, prdHits, geoMaxGap, prdMaxGap };
+  lcmfMaxGap = Math.max(lcmfMaxGap, N - lastPrd);
+  return { geoHits, lcmfHits, geoMaxGap, lcmfMaxGap };
 }
 
 function drawSim() {
   const N = parseInt(simNSlider.value, 10);
   simNVal.textContent = N;
   const c = parseFloat(cSlider.value);
-  const a = parseFloat(aSlider.value);
-  const sim = simulate(N, c, a);
+  const b = parseFloat(bSlider.value);
+  const sim = simulate(N, c, b);
 
   const dpr = window.devicePixelRatio || 1;
   const cssW = simCanvas.clientWidth;
@@ -510,12 +510,12 @@ function drawSim() {
   const plotW = cssW - padL - padR;
   const rowH = (cssH - padT - padB) / 2;
   const geoY = padT;
-  const prdY = padT + rowH;
+  const lcmfY = padT + rowH;
 
   // Row backgrounds.
   ctx.fillStyle = '#1d2127';
   ctx.fillRect(padL, geoY + 8, plotW, rowH - 16);
-  ctx.fillRect(padL, prdY + 8, plotW, rowH - 16);
+  ctx.fillRect(padL, lcmfY + 8, plotW, rowH - 16);
 
   // Labels.
   ctx.fillStyle = '#4cc9f0';
@@ -523,7 +523,7 @@ function drawSim() {
   ctx.textBaseline = 'middle';
   ctx.fillText('Geometric', 6, geoY + rowH / 2);
   ctx.fillStyle = '#f72585';
-  ctx.fillText('PRD', 6, prdY + rowH / 2);
+  ctx.fillText('LCMF', 6, lcmfY + rowH / 2);
 
   // Ticks.
   const drawTicks = (hits, y, color) => {
@@ -538,7 +538,7 @@ function drawSim() {
     ctx.stroke();
   };
   drawTicks(sim.geoHits, geoY, '#4cc9f0');
-  drawTicks(sim.prdHits, prdY, '#f72585');
+  drawTicks(sim.lcmfHits, lcmfY, '#f72585');
 
   // X-axis labels (start and end).
   ctx.fillStyle = '#9aa3ad';
@@ -549,21 +549,21 @@ function drawSim() {
   ctx.fillText(endLabel, padL + plotW - endW, cssH - padB + 4);
 
   geoDryEl.textContent = sim.geoMaxGap;
-  prdDryEl.textContent = sim.prdMaxGap;
+  lcmfDryEl.textContent = sim.lcmfMaxGap;
 }
 
 function regen() { simSeed = Math.floor(Math.random() * 2 ** 31); drawSim(); }
 regenBtn.addEventListener('click', regen);
 simNSlider.addEventListener('input', drawSim);
 cSlider.addEventListener('input', drawSim);
-aSlider.addEventListener('input', drawSim);
+bSlider.addEventListener('input', drawSim);
 window.addEventListener('resize', drawSim);
 
 
 // Sync at startup so the two sliders show matching means out of the gate.
 {
   const c0 = parseFloat(cSlider.value);
-  aSlider.value = solveAForMean(1 / c0, A_MIN, A_MAX).toFixed(4);
+  bSlider.value = solveBForMean(1 / c0, B_MIN, B_MAX).toFixed(4);
 }
 update();
 drawSim();
