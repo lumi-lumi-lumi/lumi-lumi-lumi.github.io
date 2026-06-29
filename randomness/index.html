@@ -172,6 +172,11 @@
     </div>
   </div>
 
+  <footer style="margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.8rem; line-height: 1.6;">
+    <strong style="color: var(--ink);">A note on terminology.</strong>
+    Strictly speaking, the inter-arrival distribution this page calls "LCMF" is a discrete uniform distribution on attempts <code>1..floor(1/b)</code>, with a partial bin holding the leftover mass on attempt <code>floor(1/b)+1</code>. Calling it a "uniform distribution" would be more technically correct, but in game-design and game-implementation contexts the conversation is almost always framed around the <em>hazard rate</em> — the per-attempt success chance that a player feels or that a coder writes in a roll function — rather than the inter-arrival PMF or CMF. The hazard rate of a uniform distribution is linearly increasing (counterintuitive given the name), while the hazard rate of a geometric distribution is constant. "Linear cumulative mass function" foregrounds that hazard-rate behavior, and avoids introducing confusion over the difference between the probability mass function and a "success probability" function as it might be implemented in a game, despite both functions seeming to be about the same thing to those unfamiliar with probability theory. This does come at the cost of being a bit loose with formal terminology, hence this footnote.
+  </footer>
+
 </div>
 
 <script>
