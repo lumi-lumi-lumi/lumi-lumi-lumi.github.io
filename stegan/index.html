@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stegan — Encrypted Image Messages</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1e222b;
+    --border: #2a2f3a;
+    --text: #e6e8ec;
+    --muted: #8a93a3;
+    --accent: #5b8def;
+    --accent-2: #3ecf8e;
+    --danger: #e5534b;
+    --warn: #d9a441;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 32px 20px 80px; }
+  header { text-align: center; margin-bottom: 28px; }
+  header h1 { font-size: 1.6rem; margin: 0 0 6px; }
+  header p { color: var(--muted); font-size: 0.92rem; margin: 0; }
+
+  .tabs {
+    display: flex; gap: 8px; margin-bottom: 20px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 4px;
+  }
+  .tab-btn {
+    flex: 1; padding: 10px 12px; border: none; border-radius: 8px;
+    background: transparent; color: var(--muted); font-size: 0.95rem;
+    cursor: pointer; font-weight: 600; transition: background .15s, color .15s;
+  }
+  .tab-btn.active { background: var(--accent); color: #fff; }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 22px;
+  }
+  .panel + .panel { margin-top: 16px; }
+  .hidden { display: none !important; }
+
+  label.field-label {
+    display: block; font-size: 0.85rem; font-weight: 600;
+    color: var(--muted); margin: 18px 0 6px;
+  }
+  label.field-label:first-child { margin-top: 0; }
+
+  input[type=password], input[type=text], textarea {
+    width: 100%; background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px; color: var(--text);
+    font-size: 0.95rem; font-family: inherit; resize: vertical;
+  }
+  textarea { min-height: 100px; line-height: 1.4; }
+  input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+
+  .file-drop {
+    border: 1.5px dashed var(--border); border-radius: 8px;
+    padding: 18px; text-align: center; cursor: pointer;
+    background: var(--panel-2); transition: border-color .15s;
+  }
+  .file-drop:hover, .file-drop.drag { border-color: var(--accent); }
+  .file-drop input[type=file] { display: none; }
+  .file-drop .hint { color: var(--muted); font-size: 0.85rem; margin-top: 4px; }
+
+  .preview-row { display: flex; gap: 14px; margin-top: 12px; align-items: flex-start; flex-wrap: wrap; }
+  .preview-row img { max-width: 180px; max-height: 180px; border-radius: 6px; border: 1px solid var(--border); }
+  .preview-meta { font-size: 0.82rem; color: var(--muted); line-height: 1.6; }
+  .capacity-bar {
+    height: 6px; border-radius: 3px; background: var(--panel-2);
+    overflow: hidden; margin-top: 6px; width: 180px;
+  }
+  .capacity-bar-fill { height: 100%; background: var(--accent-2); width: 0%; transition: width .2s; }
+  .capacity-bar-fill.over { background: var(--danger); }
+
+  button.primary {
+    margin-top: 20px; width: 100%; padding: 12px; border: none;
+    border-radius: 8px; background: var(--accent); color: #fff;
+    font-size: 1rem; font-weight: 700; cursor: pointer; transition: opacity .15s;
+  }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.primary:hover:not(:disabled) { opacity: 0.9; }
+
+  .msg { margin-top: 16px; padding: 12px 14px; border-radius: 8px; font-size: 0.9rem; line-height: 1.5; }
+  .msg.error { background: rgba(229,83,75,0.12); border: 1px solid rgba(229,83,75,0.4); color: #f2a29d; }
+  .msg.success { background: rgba(62,207,142,0.1); border: 1px solid rgba(62,207,142,0.35); color: #8ce0b6; }
+  .msg.warn { background: rgba(217,164,65,0.1); border: 1px solid rgba(217,164,65,0.35); color: #e8c583; }
+
+  .output-box { margin-top: 16px; }
+  .output-box textarea { min-height: 120px; background: var(--panel-2); }
+  .download-link {
+    display: inline-block; margin-top: 12px; padding: 10px 16px;
+    background: var(--accent-2); color: #08251a; border-radius: 8px;
+    text-decoration: none; font-weight: 700; font-size: 0.9rem;
+  }
+
+  details.about { margin-top: 18px; color: var(--muted); font-size: 0.85rem; }
+  details.about summary { cursor: pointer; font-weight: 600; color: var(--text); }
+  details.about p { line-height: 1.55; }
+
+  .spinner {
+    display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.35);
+    border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite;
+    vertical-align: -2px; margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  footer { text-align: center; color: var(--muted); font-size: 0.78rem; margin-top: 30px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🖼️ Stegan</h1>
+    <p>Encrypt a message, hide it inside an ordinary-looking image. Everything runs locally in your browser — nothing is uploaded anywhere.</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab-btn active" id="tabEncryptBtn">Encrypt</button>
+    <button class="tab-btn" id="tabDecryptBtn">Decrypt</button>
+  </div>
+
+  <!-- ENCRYPT PANEL -->
+  <div class="panel" id="encryptPanel">
+    <label class="field-label" for="encPassword">Password</label>
+    <input type="password" id="encPassword" autocomplete="new-password" placeholder="Choose a strong password">
+
+    <label class="field-label" for="encPasswordConfirm">Confirm password</label>
+    <input type="password" id="encPasswordConfirm" autocomplete="new-password" placeholder="Retype password">
+
+    <label class="field-label" for="encMessage">Secret message</label>
+    <textarea id="encMessage" placeholder="Message to hide..."></textarea>
+
+    <label class="field-label">Carrier image</label>
+    <div class="file-drop" id="encDrop">
+      <div>Click to choose an image, or drag one here</div>
+      <div class="hint">PNG recommended. Output is always saved as PNG.</div>
+      <input type="file" id="encFile" accept="image/*">
+    </div>
+    <div class="preview-row hidden" id="encPreviewRow">
+      <img id="encPreviewImg" alt="preview">
+      <div class="preview-meta">
+        <div id="encDims">—</div>
+        <div id="encCapacity">—</div>
+        <div class="capacity-bar"><div class="capacity-bar-fill" id="encCapacityFill"></div></div>
+      </div>
+    </div>
+
+    <button class="primary" id="encryptBtn" disabled>Encrypt &amp; Hide Message</button>
+    <div id="encMsgBox"></div>
+    <div class="output-box hidden" id="encOutputBox">
+      <a href="#" class="download-link" id="encDownloadLink" download="output.png">⬇ Download image</a>
+    </div>
+  </div>
+
+  <!-- DECRYPT PANEL -->
+  <div class="panel hidden" id="decryptPanel">
+    <label class="field-label" for="decPassword">Password</label>
+    <input type="password" id="decPassword" autocomplete="current-password" placeholder="Password used to encrypt">
+
+    <label class="field-label">Stego image</label>
+    <div class="file-drop" id="decDrop">
+      <div>Click to choose an image, or drag one here</div>
+      <div class="hint">Must be the untouched PNG produced by the Encrypt tab.</div>
+      <input type="file" id="decFile" accept="image/*">
+    </div>
+    <div class="preview-row hidden" id="decPreviewRow">
+      <img id="decPreviewImg" alt="preview">
+      <div class="preview-meta"><div id="decDims">—</div></div>
+    </div>
+
+    <button class="primary" id="decryptBtn" disabled>Decrypt Message</button>
+    <div id="decMsgBox"></div>
+    <div class="output-box hidden" id="decOutputBox">
+      <label class="field-label">Recovered message</label>
+      <textarea id="decOutput" readonly></textarea>
+    </div>
+  </div>
+
+  <details class="about">
+    <summary>How this works</summary>
+    <p>
+      Your password is run through PBKDF2 (SHA-256, 600,000 iterations) together with a random salt to derive
+      two independent secrets: an AES-256-GCM encryption key, and a seed for a password-only pixel-shuffle.
+      The message is encrypted with AES-GCM (authenticated, so a wrong password is detected rather than producing
+      garbled output). The salt is stored openly in the first pixels of the image (it isn't secret — its job is
+      to defeat precomputed attacks, not to hide anything). Everything else — the IV, the length, and the
+      ciphertext — is scattered across the remaining pixels' least-significant color bits in an order that only
+      someone with the correct password can reproduce. This code is open source, so per standard cryptographic
+      practice the whole scheme is public; the password is the only secret.
+    </p>
+  </details>
+
+  <footer>Runs entirely client-side. Save the output as PNG — anything lossy (like re-saving as JPEG) will destroy the hidden data.</footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Constants ----------
+  const SALT_BYTES = 16;
+  const SALT_BITS = SALT_BYTES * 8;      // 128, fixed sequential slots at the start
+  const IV_BYTES = 12;
+  const LEN_BYTES = 4;
+  const HEADER_BYTES = IV_BYTES + LEN_BYTES; // 16
+  const PBKDF2_ITERATIONS = 600000;
+  const GCM_TAG_BYTES = 16;
+  const MAX_MESSAGE_BYTES = 50 * 1024 * 1024; // sanity ceiling
+
+  // ---------- Small helpers ----------
+  const enc = new TextEncoder();
+  const dec = new TextDecoder();
+
+  function bytesToHex(bytes) {
+    return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  function concatBytes(...arrs) {
+    const total = arrs.reduce((s, a) => s + a.length, 0);
+    const out = new Uint8Array(total);
+    let off = 0;
+    for (const a of arrs) { out.set(a, off); off += a.length; }
+    return out;
+  }
+
+  function u32beToBytes(n) {
+    const b = new Uint8Array(4);
+    b[0] = (n >>> 24) & 0xff;
+    b[1] = (n >>> 16) & 0xff;
+    b[2] = (n >>> 8) & 0xff;
+    b[3] = n & 0xff;
+    return b;
+  }
+  function bytesToU32be(b, off) {
+    return ((b[off] << 24) | (b[off + 1] << 16) | (b[off + 2] << 8) | b[off + 3]) >>> 0;
+  }
+
+  // ---------- Seeded PRNG (mulberry32) ----------
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // Deterministic Fisher-Yates shuffle of an index array, given a 32-bit seed.
+  function seededShuffle(arr, seed) {
+    const rnd = mulberry32(seed);
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(rnd() * (i + 1));
+      const tmp = a[i]; a[i] = a[j]; a[j] = tmp;
+    }
+    return a;
+  }
+
+  // ---------- Crypto: derive AES key + shuffle seed from password+salt ----------
+  async function deriveSecrets(password, salt) {
+    const baseKey = await crypto.subtle.importKey(
+      "raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]
+    );
+    // 64 bytes = 512 bits: first 32 -> AES-256 key, last 32 -> shuffle seed material
+    const bits = await crypto.subtle.deriveBits(
+      { name: "PBKDF2", salt, iterations: PBKDF2_ITERATIONS, hash: "SHA-256" },
+      baseKey,
+      512
+    );
+    const bytes = new Uint8Array(bits);
+    const aesKeyBytes = bytes.slice(0, 32);
+    const shuffleBytes = bytes.slice(32, 64);
+    const aesKey = await crypto.subtle.importKey(
+      "raw", aesKeyBytes, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]
+    );
+    const shuffleSeed = bytesToU32be(shuffleBytes, 0) ^ bytesToU32be(shuffleBytes, 4) ^
+                         bytesToU32be(shuffleBytes, 8) ^ bytesToU32be(shuffleBytes, 12);
+    return { aesKey, shuffleSeed };
+  }
+
+  async function encryptMessage(password, plaintext) {
+    const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES));
+    const { aesKey, shuffleSeed } = await deriveSecrets(password, salt);
+    const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
+    const ptBytes = enc.encode(plaintext);
+    const ctBuf = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, aesKey, ptBytes);
+    const ciphertext = new Uint8Array(ctBuf); // includes GCM tag
+    const lenBytes = u32beToBytes(ciphertext.length);
+    const payload = concatBytes(iv, lenBytes, ciphertext); // shuffled region content
+    return { salt, payload, shuffleSeed };
+  }
+
+  async function decryptPayload(password, salt, headerAndCipher) {
+    const { aesKey } = await deriveSecrets(password, salt);
+    const iv = headerAndCipher.slice(0, IV_BYTES);
+    const ciphertext = headerAndCipher.slice(IV_BYTES);
+    const ptBuf = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, aesKey, ciphertext);
+    return dec.decode(ptBuf);
+  }
+
+  // ---------- Bit <-> pixel LSB mapping ----------
+  // Chrome (and other browsers) apply premultiplied-alpha rounding to R/G/B whenever a
+  // pixel's alpha is below 255, which silently corrupts LSB data on any non-opaque pixel
+  // through a canvas round-trip. Alpha itself survives PNG round-trips losslessly, so we
+  // use it as a deterministic mask: only fully-opaque pixels (alpha === 255) are used as
+  // carriers. Both encode and decode independently recompute the same mask from the image.
+  // "slots" here are direct indices into the RGBA data array (not just R,G,B channel offsets).
+  function getUsableSlots(data) {
+    const slots = [];
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] === 255) {
+        slots.push(i);     // R
+        slots.push(i + 1); // G
+        slots.push(i + 2); // B
+      }
+    }
+    return slots;
+  }
+
+  function readBit(data, slot) {
+    return data[slot] & 1;
+  }
+  function writeBit(data, slot, bit) {
+    data[slot] = (data[slot] & 0xfe) | (bit & 1);
+  }
+
+  function writeBytesToSlots(data, bytes, slots) {
+    let slotPos = 0;
+    for (let byteI = 0; byteI < bytes.length; byteI++) {
+      const byte = bytes[byteI];
+      for (let bit = 7; bit >= 0; bit--) {
+        const b = (byte >> bit) & 1;
+        writeBit(data, slots[slotPos], b);
+        slotPos++;
+      }
+    }
+  }
+
+  function readBytesFromSlots(data, slots, numBytes) {
+    const out = new Uint8Array(numBytes);
+    let slotPos = 0;
+    for (let byteI = 0; byteI < numBytes; byteI++) {
+      let byte = 0;
+      for (let bit = 0; bit < 8; bit++) {
+        byte = (byte << 1) | readBit(data, slots[slotPos]);
+        slotPos++;
+      }
+      out[byteI] = byte;
+    }
+    return out;
+  }
+
+  function capacityBytes(usableSlotCount) {
+    const available = usableSlotCount - SALT_BITS;
+    const maxCipherBits = available - HEADER_BYTES * 8;
+    const maxCipherBytes = Math.floor(maxCipherBits / 8);
+    return Math.max(0, maxCipherBytes - GCM_TAG_BYTES);
+  }
+
+  // ---------- Image loading helpers ----------
+  function loadImageFile(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => resolve({ img, url });
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Could not load image.")); };
+      img.src = url;
+    });
+  }
+
+  function imageToCanvas(img) {
+    const canvas = document.createElement("canvas");
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0);
+    return { canvas, ctx };
+  }
+
+  // ---------- UI wiring ----------
+  const tabEncryptBtn = document.getElementById("tabEncryptBtn");
+  const tabDecryptBtn = document.getElementById("tabDecryptBtn");
+  const encryptPanel = document.getElementById("encryptPanel");
+  const decryptPanel = document.getElementById("decryptPanel");
+
+  tabEncryptBtn.addEventListener("click", () => {
+    tabEncryptBtn.classList.add("active");
+    tabDecryptBtn.classList.remove("active");
+    encryptPanel.classList.remove("hidden");
+    decryptPanel.classList.add("hidden");
+  });
+  tabDecryptBtn.addEventListener("click", () => {
+    tabDecryptBtn.classList.add("active");
+    tabEncryptBtn.classList.remove("active");
+    decryptPanel.classList.remove("hidden");
+    encryptPanel.classList.add("hidden");
+  });
+
+  function showMsg(container, type, text) {
+    container.innerHTML = `<div class="msg ${type}">${text}</div>`;
+  }
+  function clearMsg(container) { container.innerHTML = ""; }
+
+  function setupDrop(dropEl, fileInput, onFile) {
+    dropEl.addEventListener("click", () => fileInput.click());
+    dropEl.addEventListener("dragover", (e) => { e.preventDefault(); dropEl.classList.add("drag"); });
+    dropEl.addEventListener("dragleave", () => dropEl.classList.remove("drag"));
+    dropEl.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropEl.classList.remove("drag");
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) onFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener("change", () => {
+      if (fileInput.files && fileInput.files[0]) onFile(fileInput.files[0]);
+    });
+  }
+
+  // ---- Encrypt tab state ----
+  const encPassword = document.getElementById("encPassword");
+  const encPasswordConfirm = document.getElementById("encPasswordConfirm");
+  const encMessage = document.getElementById("encMessage");
+  const encFile = document.getElementById("encFile");
+  const encDrop = document.getElementById("encDrop");
+  const encPreviewRow = document.getElementById("encPreviewRow");
+  const encPreviewImg = document.getElementById("encPreviewImg");
+  const encDims = document.getElementById("encDims");
+  const encCapacity = document.getElementById("encCapacity");
+  const encCapacityFill = document.getElementById("encCapacityFill");
+  const encryptBtn = document.getElementById("encryptBtn");
+  const encMsgBox = document.getElementById("encMsgBox");
+  const encOutputBox = document.getElementById("encOutputBox");
+  const encDownloadLink = document.getElementById("encDownloadLink");
+
+  let encState = { canvas: null, width: 0, height: 0, usableSlotCount: 0 };
+
+  function updateEncryptButtonState() {
+    const hasImage = !!encState.canvas;
+    const hasMsg = encMessage.value.length > 0;
+    const hasPw = encPassword.value.length > 0 && encPassword.value === encPasswordConfirm.value;
+    let capOk = true;
+    if (hasImage && hasMsg) {
+      const cap = capacityBytes(encState.usableSlotCount);
+      capOk = enc.encode(encMessage.value).length <= cap;
+    }
+    encryptBtn.disabled = !(hasImage && hasMsg && hasPw && capOk);
+  }
+
+  [encPassword, encPasswordConfirm, encMessage].forEach(el =>
+    el.addEventListener("input", () => { clearMsg(encMsgBox); updateEncryptButtonState(); })
+  );
+
+  setupDrop(encDrop, encFile, async (file) => {
+    clearMsg(encMsgBox);
+    encOutputBox.classList.add("hidden");
+    try {
+      const { img, url } = await loadImageFile(file);
+      const { canvas, ctx } = imageToCanvas(img);
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      const usableSlotCount = getUsableSlots(data).length;
+      const dotIdx = file.name.lastIndexOf(".");
+      const baseName = dotIdx > 0 ? file.name.slice(0, dotIdx) : file.name;
+      const outputName = baseName + ".png"; // output is always PNG regardless of input format
+      encState = { canvas, width: canvas.width, height: canvas.height, usableSlotCount, outputName };
+      encDownloadLink.download = outputName;
+      encPreviewImg.src = url;
+      encPreviewRow.classList.remove("hidden");
+      encDims.textContent = `${canvas.width} × ${canvas.height} px`;
+      const cap = capacityBytes(usableSlotCount);
+      const totalPx = canvas.width * canvas.height;
+      const opaquePx = usableSlotCount / 3;
+      let capText = `Capacity: ~${cap.toLocaleString()} bytes of message`;
+      if (opaquePx < totalPx) {
+        capText += ` (${(totalPx - opaquePx).toLocaleString()} transparent px skipped)`;
+      }
+      encCapacity.textContent = capText;
+      updateCapacityBar();
+      updateEncryptButtonState();
+    } catch (err) {
+      showMsg(encMsgBox, "error", "Failed to load image: " + err.message);
+    }
+  });
+
+  function updateCapacityBar() {
+    if (!encState.canvas) return;
+    const cap = capacityBytes(encState.usableSlotCount);
+    const used = enc.encode(encMessage.value).length;
+    const pct = cap > 0 ? Math.min(100, (used / cap) * 100) : 100;
+    encCapacityFill.style.width = pct + "%";
+    encCapacityFill.classList.toggle("over", used > cap);
+  }
+  encMessage.addEventListener("input", updateCapacityBar);
+
+  encryptBtn.addEventListener("click", async () => {
+    clearMsg(encMsgBox);
+    encOutputBox.classList.add("hidden");
+    const password = encPassword.value;
+    const message = encMessage.value;
+
+    if (password !== encPasswordConfirm.value) {
+      showMsg(encMsgBox, "error", "Passwords do not match.");
+      return;
+    }
+    if (!encState.canvas) {
+      showMsg(encMsgBox, "error", "Choose a carrier image first.");
+      return;
+    }
+    const msgBytesLen = enc.encode(message).length;
+    if (msgBytesLen > MAX_MESSAGE_BYTES) {
+      showMsg(encMsgBox, "error", "Message is too large.");
+      return;
+    }
+    const cap = capacityBytes(encState.usableSlotCount);
+    if (msgBytesLen > cap) {
+      showMsg(encMsgBox, "error", `Message is too large for this image. Max ~${cap.toLocaleString()} bytes, message is ${msgBytesLen.toLocaleString()} bytes. Choose a larger image or shorten the message.`);
+      return;
+    }
+
+    encryptBtn.disabled = true;
+    encryptBtn.innerHTML = '<span class="spinner"></span>Encrypting…';
+    try {
+      const { salt, payload, shuffleSeed } = await encryptMessage(password, message);
+
+      const ctx = encState.canvas.getContext("2d", { willReadFrequently: true });
+      const imageData = ctx.getImageData(0, 0, encState.width, encState.height);
+      const data = imageData.data;
+
+      const usableSlots = getUsableSlots(data);
+      const available = usableSlots.length - SALT_BITS;
+      if (payload.length * 8 > available) {
+        throw new Error("Image capacity exceeded unexpectedly.");
+      }
+
+      // 1. Write salt into the first SALT_BITS usable (opaque-pixel) slots, in scan order
+      const saltSlots = usableSlots.slice(0, SALT_BITS);
+      writeBytesToSlots(data, salt, saltSlots);
+
+      // 2. Shuffle the remaining usable slots using the password-derived seed, write payload into prefix
+      const remainingSlots = usableSlots.slice(SALT_BITS);
+      const shuffled = seededShuffle(remainingSlots, shuffleSeed);
+      const payloadSlots = shuffled.slice(0, payload.length * 8);
+      writeBytesToSlots(data, payload, payloadSlots);
+
+      ctx.putImageData(imageData, 0, 0);
+
+      encState.canvas.toBlob((blob) => {
+        const url = URL.createObjectURL(blob);
+        encDownloadLink.href = url;
+        encOutputBox.classList.remove("hidden");
+        showMsg(encMsgBox, "success", "Message hidden successfully. Download the image below — save it as PNG and share it like any normal picture.");
+      }, "image/png");
+    } catch (err) {
+      showMsg(encMsgBox, "error", "Encryption failed: " + err.message);
+    } finally {
+      encryptBtn.disabled = false;
+      encryptBtn.textContent = "Encrypt & Hide Message";
+      updateEncryptButtonState();
+    }
+  });
+
+  // ---- Decrypt tab state ----
+  const decPassword = document.getElementById("decPassword");
+  const decFile = document.getElementById("decFile");
+  const decDrop = document.getElementById("decDrop");
+  const decPreviewRow = document.getElementById("decPreviewRow");
+  const decPreviewImg = document.getElementById("decPreviewImg");
+  const decDims = document.getElementById("decDims");
+  const decryptBtn = document.getElementById("decryptBtn");
+  const decMsgBox = document.getElementById("decMsgBox");
+  const decOutputBox = document.getElementById("decOutputBox");
+  const decOutput = document.getElementById("decOutput");
+
+  let decState = { canvas: null, width: 0, height: 0 };
+
+  function updateDecryptButtonState() {
+    decryptBtn.disabled = !(decState.canvas && decPassword.value.length > 0);
+  }
+  decPassword.addEventListener("input", () => { clearMsg(decMsgBox); updateDecryptButtonState(); });
+
+  setupDrop(decDrop, decFile, async (file) => {
+    clearMsg(decMsgBox);
+    decOutputBox.classList.add("hidden");
+    try {
+      const { img, url } = await loadImageFile(file);
+      const { canvas } = imageToCanvas(img);
+      decState = { canvas, width: canvas.width, height: canvas.height };
+      decPreviewImg.src = url;
+      decPreviewRow.classList.remove("hidden");
+      decDims.textContent = `${canvas.width} × ${canvas.height} px`;
+      updateDecryptButtonState();
+    } catch (err) {
+      showMsg(decMsgBox, "error", "Failed to load image: " + err.message);
+    }
+  });
+
+  decryptBtn.addEventListener("click", async () => {
+    clearMsg(decMsgBox);
+    decOutputBox.classList.add("hidden");
+    const password = decPassword.value;
+    if (!decState.canvas) {
+      showMsg(decMsgBox, "error", "Choose a stego image first.");
+      return;
+    }
+
+    decryptBtn.disabled = true;
+    decryptBtn.innerHTML = '<span class="spinner"></span>Decrypting…';
+    try {
+      const ctx = decState.canvas.getContext("2d", { willReadFrequently: true });
+      const imageData = ctx.getImageData(0, 0, decState.width, decState.height);
+      const data = imageData.data;
+
+      const usableSlots = getUsableSlots(data);
+      if (usableSlots.length < SALT_BITS + HEADER_BYTES * 8) {
+        throw new Error("Image is too small to contain a hidden message.");
+      }
+
+      // 1. Read salt from the first SALT_BITS usable (opaque-pixel) slots, in scan order
+      const saltSlots = usableSlots.slice(0, SALT_BITS);
+      const salt = readBytesFromSlots(data, saltSlots, SALT_BYTES);
+
+      // 2. Derive secrets, rebuild the same shuffle over the same remaining usable slots
+      const { aesKey, shuffleSeed } = await deriveSecrets(password, salt);
+      const remainingSlots = usableSlots.slice(SALT_BITS);
+      const shuffled = seededShuffle(remainingSlots, shuffleSeed);
+
+      // 3. Read fixed-size header (IV + length) from the front of the shuffled region
+      const headerSlots = shuffled.slice(0, HEADER_BYTES * 8);
+      const headerBytes = readBytesFromSlots(data, headerSlots, HEADER_BYTES);
+      const iv = headerBytes.slice(0, IV_BYTES);
+      const cipherLen = bytesToU32be(headerBytes, IV_BYTES);
+
+      const maxAvailableCipherBytes = Math.floor((shuffled.length - HEADER_BYTES * 8) / 8);
+      if (cipherLen < GCM_TAG_BYTES || cipherLen > maxAvailableCipherBytes || cipherLen > MAX_MESSAGE_BYTES) {
+        throw new Error("no-message");
+      }
+
+      // 4. Read the ciphertext from the following slots in the same shuffled sequence
+      const cipherSlots = shuffled.slice(HEADER_BYTES * 8, HEADER_BYTES * 8 + cipherLen * 8);
+      const ciphertext = readBytesFromSlots(data, cipherSlots, cipherLen);
+
+      const ptBuf = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, aesKey, ciphertext);
+      const message = dec.decode(ptBuf);
+
+      decOutput.value = message;
+      decOutputBox.classList.remove("hidden");
+      showMsg(decMsgBox, "success", "Message recovered successfully.");
+    } catch (err) {
+      showMsg(decMsgBox, "error", "Incorrect password, or this image does not contain a message.");
+    } finally {
+      decryptBtn.disabled = false;
+      decryptBtn.textContent = "Decrypt Message";
+      updateDecryptButtonState();
+    }
+  });
+
+})();
+</script>
+</body>
+</html>
